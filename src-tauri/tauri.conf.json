@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "logarithm",
+  "productName": "Logarithm",
   "version": "0.1.0",
   "identifier": "com.mycin.logarithm",
   "build": {
@@ -14,7 +14,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Logarithm - A Log Viewer",
+        "title": "Logarithm - A Modern AI Based Log Viewer",
         "width": 800,
         "height": 600
       }

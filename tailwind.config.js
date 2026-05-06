@@ -5,6 +5,11 @@ module.exports = {
     "./templates/**/*.html"
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        mono: ['Fira Code', 'monospace'],
+      }
+    },
   },
 }
