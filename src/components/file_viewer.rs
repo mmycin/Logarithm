@@ -1,4 +1,4 @@
-use crate::app::{FilterState, LogEntry, LogFile, Theme, DARK, LIGHT};
+use crate::app::{FilterState, LoganAction, LogEntry, LogFile, Theme, DARK, LIGHT};
 use crate::components::severity::{level_colors, severity_rank};
 use leptos::prelude::*;
 
@@ -266,9 +266,17 @@ pub fn FileViewer(
     open_files: ReadSignal<Vec<LogFile>>,
     active_file: ReadSignal<Option<usize>>,
     filter_state: FilterState,
+    set_logan_action: WriteSignal<Option<LoganAction>>,
+    set_ai_open: WriteSignal<bool>,
 ) -> impl IntoView {
     let tok  = move || if theme.get() == Theme::Dark { &DARK } else { &LIGHT };
     let dark = move || theme.get() == Theme::Dark;
+
+    // Context menu state
+    let (ctx_visible, set_ctx_visible) = signal(false);
+    let (ctx_x, set_ctx_x)             = signal(0i32);
+    let (ctx_y, set_ctx_y)             = signal(0i32);
+    let (ctx_entry, set_ctx_entry)     = signal(None::<(String, usize, String)>); // (filename, line, message)
 
     let selected_file = move || -> Option<LogFile> {
         active_file.get().and_then(|idx| open_files.get().get(idx).cloned())
@@ -300,9 +308,13 @@ pub fn FileViewer(
 
     view! {
         <div style=move || format!(
-            "flex:1;display:flex;flex-direction:column;background:{};overflow:hidden;",
+            "flex:1;display:flex;flex-direction:column;background:{};overflow:hidden;position:relative;",
             tok().bg_base
-        )>
+        )
+        // Close context menu on any click in the viewer
+        on:click=move |_| set_ctx_visible.set(false)
+        on:contextmenu=move |ev| ev.prevent_default()
+        >
             {move || {
                 if selected_file().is_none() {
                     view! { <WelcomePage theme /> }.into_any()
@@ -368,23 +380,48 @@ pub fn FileViewer(
                                         let row_bl = if accent != "transparent" && !de.is_continuation {
                                             format!("border-left:2px solid {}55;", accent)
                                         } else if de.is_continuation {
-                                            // Continuation lines get a subtle indent line
                                             format!("border-left:2px solid {}22;", accent)
                                         } else {
                                             "border-left:2px solid transparent;".to_string()
                                         };
-
-                                        // Continuation lines are slightly dimmed
                                         let msg_opacity = if de.is_continuation { "opacity:0.65;" } else { "" };
 
+                                        // For context menu
+                                        let file_name = selected_file()
+                                            .map(|f| {
+                                                // Shorten: take last segment before extension
+                                                let n = &f.name;
+                                                n.rsplit('/').next()
+                                                 .or_else(|| n.rsplit('\\').next())
+                                                 .unwrap_or(n)
+                                                 .to_string()
+                                            })
+                                            .unwrap_or_default();
+                                        let entry_line = de.group_line;
+                                        let entry_msg  = de.entry.message.clone();
+
                                         view! {
-                                            <div style=move || format!(
-                                                "display:flex;align-items:baseline;padding:{}12px;\
-                                                 border-bottom:1px solid {};{}cursor:default;",
-                                                if de.is_continuation { "1px " } else { "2px " },
-                                                tok().border_subtle,
-                                                row_bl
-                                            )>
+                                            <div
+                                                style=move || format!(
+                                                    "display:flex;align-items:baseline;padding:{}12px;\
+                                                     border-bottom:1px solid {};{}cursor:default;",
+                                                    if de.is_continuation { "1px " } else { "2px " },
+                                                    tok().border_subtle,
+                                                    row_bl
+                                                )
+                                                on:contextmenu=move |ev| {
+                                                    ev.prevent_default();
+                                                    ev.stop_propagation();
+                                                    set_ctx_x.set(ev.client_x());
+                                                    set_ctx_y.set(ev.client_y());
+                                                    set_ctx_entry.set(Some((
+                                                        file_name.clone(),
+                                                        entry_line,
+                                                        entry_msg.clone(),
+                                                    )));
+                                                    set_ctx_visible.set(true);
+                                                }
+                                            >
                                                 // Group line number (same for all lines in a group)
                                                 <span style=move || format!(
                                                     "width:44px;text-align:right;font-size:11px;\
@@ -434,6 +471,93 @@ pub fn FileViewer(
                     }.into_any()
                 }
             }}
+
+            // ── Context menu ──────────────────────────────────────────────
+            <Show when=move || ctx_visible.get()>
+                <div
+                    style=move || {
+                        // Clamp to viewport: menu is ~200px wide, ~100px tall
+                        let win_w = web_sys::window()
+                            .and_then(|w| w.inner_width().ok())
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(1200.0) as i32;
+                        let win_h = web_sys::window()
+                            .and_then(|w| w.inner_height().ok())
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(800.0) as i32;
+                        let x = (ctx_x.get()).min(win_w - 210);
+                        let y = (ctx_y.get()).min(win_h - 120);
+                        format!(
+                            "position:fixed;left:{}px;top:{}px;z-index:500;\
+                             background:{};border:1px solid {};border-radius:8px;\
+                             box-shadow:0 8px 32px rgba(0,0,0,0.5);padding:4px 0;\
+                             min-width:200px;overflow:hidden;",
+                            x, y, tok().bg_elevated, tok().border
+                        )
+                    }
+                    on:click=|ev| ev.stop_propagation()
+                >
+                    // Context chip header
+                    {move || ctx_entry.get().map(|(fname, lnum, _)| view! {
+                        <div style=move || format!(
+                            "padding:6px 12px 5px;font-size:10px;font-weight:700;\
+                             color:{};letter-spacing:0.07em;text-transform:uppercase;\
+                             border-bottom:1px solid {};margin-bottom:2px;",
+                            tok().text_muted, tok().border
+                        )>
+                            {format!("{}:{}", fname, lnum)}
+                        </div>
+                    })}
+
+                    // Add to Logan context
+                    <button
+                        style=move || format!(
+                            "display:flex;align-items:center;gap:9px;width:100%;text-align:left;\
+                             padding:7px 12px;font-size:12.5px;color:{};background:transparent;\
+                             border:none;cursor:pointer;transition:background 0.08s;",
+                            tok().text_primary
+                        )
+                        on:click=move |_| {
+                            if let Some((fname, lnum, msg)) = ctx_entry.get() {
+                                set_logan_action.set(Some(LoganAction::AddContext {
+                                    file: fname, line: lnum, text: msg,
+                                }));
+                                set_ai_open.set(true);
+                            }
+                            set_ctx_visible.set(false);
+                        }
+                    >
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.55;flex-shrink:0">
+                            <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
+                        </svg>
+                        "Add to Logan context"
+                    </button>
+
+                    // Explain with AI
+                    <button
+                        style=move || format!(
+                            "display:flex;align-items:center;gap:9px;width:100%;text-align:left;\
+                             padding:7px 12px;font-size:12.5px;color:{};background:transparent;\
+                             border:none;cursor:pointer;transition:background 0.08s;",
+                            tok().text_primary
+                        )
+                        on:click=move |_| {
+                            if let Some((fname, lnum, msg)) = ctx_entry.get() {
+                                set_logan_action.set(Some(LoganAction::Explain {
+                                    file: fname, line: lnum, text: msg,
+                                }));
+                                set_ai_open.set(true);
+                            }
+                            set_ctx_visible.set(false);
+                        }
+                    >
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.55;flex-shrink:0">
+                            <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94z"/>
+                        </svg>
+                        "Explain with AI"
+                    </button>
+                </div>
+            </Show>
         </div>
     }
 }

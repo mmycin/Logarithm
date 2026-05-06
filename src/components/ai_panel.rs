@@ -1,5 +1,5 @@
 
-use crate::app::{Theme, DARK, LIGHT};
+use crate::app::{LoganAction, Theme, DARK, LIGHT};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -58,6 +58,8 @@ pub fn AiPanel(
     ai_width: ReadSignal<u32>,
     set_ai_width: WriteSignal<u32>,
     set_ai_open: WriteSignal<bool>,
+    logan_action: ReadSignal<Option<LoganAction>>,
+    set_logan_action: WriteSignal<Option<LoganAction>>,
 ) -> impl IntoView {
     let tok = move || if theme.get() == Theme::Dark { &DARK } else { &LIGHT };
 
@@ -181,6 +183,41 @@ pub fn AiPanel(
             }
         });
     };
+
+    // ── React to LoganAction from FileViewer ─────────────────────────────
+    Effect::new(move |_| {
+        let Some(action) = logan_action.get() else { return };
+        set_logan_action.set(None); // consume immediately
+
+        match action {
+            LoganAction::AddContext { file, line, text } => {
+                // Add a context chip to the input box (don't send)
+                let chip = format!("[{file}:{line}]\n{text}");
+                set_input.update(|inp| {
+                    if inp.is_empty() {
+                        *inp = chip;
+                    } else {
+                        inp.push('\n');
+                        inp.push_str(&chip);
+                    }
+                });
+                // Ensure chat is visible
+                if !setup_done.get() { set_setup_done.set(true); }
+            }
+            LoganAction::Explain { file, line, text } => {
+                // Build the explain message and auto-send
+                let msg = format!(
+                    "Explain this log line from {file}:{line}\n\n```\n{text}\n```"
+                );
+                set_input.set(msg);
+                // Ensure chat is visible then send
+                if !setup_done.get() { set_setup_done.set(true); }
+                // Trigger send on next tick via a small trick: set input then call send
+                // We call send_message directly since we just set input
+                send_message();
+            }
+        }
+    });
 
     // ── View ─────────────────────────────────────────────────────────────
     view! {
@@ -476,13 +513,37 @@ pub fn AiPanel(
             // ── Input bar ─────────────────────────────────────────────────
             <Show when=move || setup_done.get()>
                 <div style=move || format!(
-                    "padding:10px 12px;border-top:1px solid {};flex-shrink:0;", tok().border
+                    "padding:10px 12px;border-top:1px solid {};flex-shrink:0;position:relative;", tok().border
                 )>
                     <div style=move || format!(
                         "display:flex;align-items:flex-end;gap:8px;padding:8px 10px;\
                          background:{};border:1px solid {};border-radius:10px;",
                         tok().bg_input, tok().border
                     )>
+                        // Context chip — shown when input starts with [file:line]
+                        {move || {
+                            let inp = input.get();
+                            if inp.starts_with('[') {
+                                if let Some(end) = inp.find("]\n") {
+                                    let chip = &inp[1..end];
+                                    return view! {
+                                        <div style=move || format!(
+                                            "position:absolute;bottom:calc(100% + 4px);left:12px;\
+                                             display:flex;align-items:center;gap:5px;padding:3px 8px;\
+                                             background:{};border:1px solid {};border-radius:5px;\
+                                             font-size:11px;color:{};font-family:'Fira Code',monospace;",
+                                            tok().bg_elevated, tok().accent_border, tok().accent
+                                        )>
+                                            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                                                <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
+                                            </svg>
+                                            {chip.to_string()}
+                                        </div>
+                                    }.into_any();
+                                }
+                            }
+                            view! { <span/> }.into_any()
+                        }}
                         <textarea
                             style=move || format!(
                                 "flex:1;border:none;background:transparent;font-size:12.5px;\

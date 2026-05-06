@@ -2,10 +2,7 @@ use crate::components::{AiPanel, BottomBar, FileBar, FileViewer, FilterPanel, Ti
 use leptos::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Theme {
-    Dark,
-    Light,
-}
+pub enum Theme { Dark, Light }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LogEntry {
@@ -19,6 +16,15 @@ pub struct LogEntry {
 pub struct LogFile {
     pub name: String,
     pub entries: Vec<LogEntry>,
+}
+
+/// Action sent from FileViewer → AiPanel via shared signal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoganAction {
+    /// Add a line as context chip — does NOT auto-send.
+    AddContext { file: String, line: usize, text: String },
+    /// Add a line and immediately send an "Explain" request.
+    Explain    { file: String, line: usize, text: String },
 }
 
 /// All filter state — lifted to App so FilterPanel and FileViewer share it.
@@ -129,6 +135,9 @@ pub fn App() -> impl IntoView {
     let (ai_open, set_ai_open)     = signal(false);
     let (ai_width, set_ai_width)   = signal(340u32);
 
+    // Logan context bridge: FileViewer → AiPanel
+    let (logan_action, set_logan_action) = signal(None::<crate::app::LoganAction>);
+
     // Filter panel
     let (filter_open, set_filter_open) = signal(true);
 
@@ -198,12 +207,14 @@ pub fn App() -> impl IntoView {
                 <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0">
                     <FileBar theme open_files set_open_files active_file set_active_file
                         open_dialog_trigger filter_state />
-                    <FileViewer theme open_files active_file filter_state />
+                    <FileViewer theme open_files active_file filter_state
+                        set_logan_action set_ai_open />
                 </div>
 
                 // Right AI panel — independent, resizable
                 <Show when=move || ai_open.get()>
-                    <AiPanel theme ai_width set_ai_width set_ai_open />
+                    <AiPanel theme ai_width set_ai_width set_ai_open
+                        logan_action set_logan_action />
                 </Show>
             </div>
 
