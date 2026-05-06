@@ -233,10 +233,26 @@ fn WelcomePage(theme: ReadSignal<Theme>) -> impl IntoView {
                 "font-size:11px;color:{};text-align:center;margin:0;", tok().text_muted
             )>
                 "Built with Tauri + Leptos + Rust · "
-                <a href="https://github.com/mmycin/Logarithm"
-                    style=move || format!("color:{};text-decoration:none;cursor:pointer;", tok().accent)>
+                <span
+                    style=move || format!("color:{};text-decoration:underline;cursor:pointer;", tok().accent)
+                    on:click=move |_| {
+                        use wasm_bindgen::prelude::*;
+                        use wasm_bindgen_futures::spawn_local;
+                        use js_sys::Reflect;
+                        #[wasm_bindgen]
+                        extern "C" {
+                            #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
+                            async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+                        }
+                        spawn_local(async {
+                            let args = js_sys::Object::new();
+                            let _ = Reflect::set(&args, &JsValue::from_str("url"), &JsValue::from_str("https://github.com/mmycin/Logarithm"));
+                            let _ = invoke("open_url", JsValue::from(args)).await;
+                        });
+                    }
+                >
                     "github.com/mmycin/Logarithm"
-                </a>
+                </span>
             </p>
         </div>
     }

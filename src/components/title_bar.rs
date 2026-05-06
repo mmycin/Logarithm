@@ -1,7 +1,24 @@
 use crate::app::{Theme, DARK, LIGHT};
 use leptos::ev::{KeyboardEvent, MouseEvent};
 use leptos::prelude::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
+use js_sys::Reflect;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
+    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+}
+
+fn open_url_in_browser(url: &str) {
+    let url = url.to_string();
+    spawn_local(async move {
+        let args = js_sys::Object::new();
+        let _ = Reflect::set(&args, &JsValue::from_str("url"), &JsValue::from_str(&url));
+        let _ = invoke("open_url", JsValue::from(args)).await;
+    });
+}
 
 #[component]
 pub fn TitleBar(
@@ -214,10 +231,7 @@ pub fn TitleBar(
                         </button>
                         <hr style=move || hr_s() />
                         <button style=move || ditem() on:click=move |_| {
-                            // Open GitHub in browser via Tauri opener
-                            let _ = web_sys::window().map(|w| {
-                                let _ = w.open_with_url_and_target("https://github.com/mmycin/Logarithm", "_blank");
-                            });
+                            open_url_in_browser("https://github.com/mmycin/Logarithm");
                             set_active_menu.set(None);
                         }>
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.5;flex-shrink:0">
@@ -276,7 +290,7 @@ pub fn TitleBar(
                                 </svg>
                             </div>
                             <div>
-                                <div style=move || format!("font-size:12px;font-weight:700;color:{}", tok().text_primary)>"Logar AI"</div>
+                                <div style=move || format!("font-size:12px;font-weight:700;color:{}", tok().text_primary)>"Logan AI"</div>
                                 <div style=move || format!("font-size:10px;color:{}", tok().text_muted)>"Intelligent log analysis"</div>
                             </div>
                         </div>
@@ -296,7 +310,7 @@ pub fn TitleBar(
                             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.5;flex-shrink:0">
                                 <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
                             </svg>
-                            "Open Logar Chat"
+                            "Open Logan Chat"
                             <span style=move || kbd()>"Ctrl+Shift+A"</span>
                         </button>
                         <hr style=move || hr_s() />
@@ -304,7 +318,7 @@ pub fn TitleBar(
                             "padding:6px 12px 8px;font-size:11px;color:{};line-height:1.5;",
                             tok().text_muted
                         )>
-                            "AI-powered log analysis coming soon. Logar will help you detect anomalies, find patterns, and understand root causes."
+                            "AI-powered log analysis coming soon. Logan will help you detect anomalies, find patterns, and understand root causes."
                         </div>
                     </div>
                 </Show>

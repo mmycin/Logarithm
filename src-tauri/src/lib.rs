@@ -19,28 +19,36 @@ pub struct FilterParams {
     pub to_datetime: String,
 }
 
-mod commands {
-    use super::{FilterParams, LogEntry};
+#[derive(Debug, Deserialize)]
+pub struct AiChatRequest {
+    pub provider: String,   // "gemini" | "openai"
+    pub api_key: String,
+    pub model: String,
+    pub messages: Vec<AiMessage>,
+}
 
-    /// Parse raw log text into structured entries.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AiMessage {
+    pub role: String,    // "user" | "assistant" | "system"
+    pub content: String,
+}
+
+mod commands {
+    use super::{AiChatRequest, FilterParams, LogEntry};
+
     #[tauri::command]
     pub fn parse_log(text: String) -> Vec<LogEntry> {
         const STATUSES: [&str; 8] = [
             "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "SUCCESS", "FATAL",
         ];
-
         text.lines()
             .enumerate()
             .filter_map(|(line_idx, line)| {
                 let line = line.trim();
-                if line.is_empty() {
-                    return None;
-                }
-
+                if line.is_empty() { return None; }
                 let tokens: Vec<&str> = line.split_whitespace().collect();
                 let mut datetime = String::new();
                 let mut start_idx = 0usize;
-
                 if let Some(first) = tokens.first().copied() {
                     if let Some((d, t)) = first.split_once('T') {
                         if !d.is_empty() && !t.is_empty() {
@@ -48,138 +56,174 @@ mod commands {
                             start_idx = 1;
                         }
                     } else if tokens.len() >= 2 {
-                        let d = tokens[0];
-                        let t = tokens[1];
+                        let d = tokens[0]; let t = tokens[1];
                         if d.contains('-') && t.contains(':') {
                             datetime = format!("{} {}", d, t);
                             start_idx = 2;
                         }
                     }
                 }
-
                 let mut status_idx: Option<usize> = None;
                 let mut status = String::new();
                 for (i, tok) in tokens.iter().enumerate().skip(start_idx) {
-                    let cleaned = tok
-                        .trim_matches(|c: char| !c.is_alphanumeric())
-                        .to_ascii_uppercase();
+                    let cleaned = tok.trim_matches(|c: char| !c.is_alphanumeric()).to_ascii_uppercase();
                     if STATUSES.iter().any(|s| *s == cleaned) {
-                        status_idx = Some(i);
-                        status = cleaned;
-                        break;
+                        status_idx = Some(i); status = cleaned; break;
                     }
                 }
-
                 let message = match status_idx {
-                    Some(si) => tokens
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(i, t)| {
-                            if i == si || i < start_idx {
-                                None
-                            } else {
-                                Some(*t)
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                    None => tokens
-                        .iter()
-                        .skip(start_idx)
-                        .copied()
-                        .collect::<Vec<_>>()
-                        .join(" "),
+                    Some(si) => tokens.iter().enumerate()
+                        .filter_map(|(i, t)| if i == si || i < start_idx { None } else { Some(*t) })
+                        .collect::<Vec<_>>().join(" "),
+                    None => tokens.iter().skip(start_idx).copied().collect::<Vec<_>>().join(" "),
                 };
-
-                Some(LogEntry {
-                    line: line_idx + 1,
-                    datetime,
-                    status,
-                    message,
-                })
+                Some(LogEntry { line: line_idx + 1, datetime, status, message })
             })
             .collect()
     }
 
-    /// Filter already-parsed entries using the given params.
-    /// All heavy lifting happens in Rust, not in the frontend.
     #[tauri::command]
     pub fn filter_entries(entries: Vec<LogEntry>, params: FilterParams) -> Vec<LogEntry> {
         let from_cmp = params.from_datetime.replace('T', " ");
-        let to_cmp = params.to_datetime.replace('T', " ");
+        let to_cmp   = params.to_datetime.replace('T', " ");
+        let sf = params.status.to_ascii_lowercase();
+        let cf = params.custom_status.trim().to_ascii_uppercase();
+        entries.into_iter().filter(|entry| {
+            if sf != "all" {
+                let es = entry.status.to_ascii_uppercase();
+                let ok = if sf == "custom" {
+                    cf.is_empty() || cf.split(',').map(|s| s.trim()).any(|s| es == s)
+                } else if sf == "warn" { es == "WARN" || es == "WARNING" }
+                else { es == sf.to_ascii_uppercase() };
+                if !ok { return false; }
+            }
+            if !params.query.is_empty() {
+                let hay = format!("{} {} {}", entry.datetime, entry.status, entry.message);
+                let matched = if params.fuzzy {
+                    let (h, q) = if params.match_case { (hay.clone(), params.query.clone()) }
+                                 else { (hay.to_ascii_lowercase(), params.query.to_ascii_lowercase()) };
+                    let mut hi = h.chars();
+                    q.chars().all(|c| hi.any(|hc| hc == c))
+                } else if params.match_case { hay.contains(&params.query) }
+                else { hay.to_ascii_lowercase().contains(&params.query.to_ascii_lowercase()) };
+                if !matched { return false; }
+            }
+            if !from_cmp.is_empty() && !entry.datetime.is_empty() && entry.datetime < from_cmp { return false; }
+            if !to_cmp.is_empty() && !entry.datetime.is_empty() {
+                let ep = &entry.datetime[..entry.datetime.len().min(to_cmp.len())];
+                if ep > to_cmp.as_str() { return false; }
+            }
+            true
+        }).collect()
+    }
 
-        let status_filter = params.status.to_ascii_lowercase();
-        let custom_filter = params.custom_status.trim().to_ascii_uppercase();
+    /// Open a URL in the system default browser.
+    #[tauri::command]
+    pub async fn open_url(url: String, _app: tauri::AppHandle) -> Result<(), String> {
+        tauri_plugin_opener::open_url(url, None::<&str>)
+            .map_err(|e| e.to_string())
+    }
 
-        entries
-            .into_iter()
-            .filter(|entry| {
-                // ── Status ──────────────────────────────────────────────
-                if status_filter != "all" {
-                    let es = entry.status.to_ascii_uppercase();
-                    let matches = if status_filter == "custom" {
-                        if custom_filter.is_empty() {
-                            true
-                        } else {
-                            custom_filter
-                                .split(',')
-                                .map(|s| s.trim())
-                                .any(|s| es == s)
-                        }
-                    } else if status_filter == "warn" {
-                        es == "WARN" || es == "WARNING"
-                    } else {
-                        es == status_filter.to_ascii_uppercase()
-                    };
-                    if !matches {
-                        return false;
-                    }
-                }
+    /// Send a chat message to Gemini or OpenAI and return the assistant reply.
+    #[tauri::command]
+    pub async fn ai_chat(req: AiChatRequest) -> Result<String, String> {
+        match req.provider.as_str() {
+            "gemini" => gemini_chat(req).await,
+            "openai" => openai_chat(req).await,
+            other => Err(format!("Unknown provider: {other}")),
+        }
+    }
 
-                // ── Search ───────────────────────────────────────────────
-                if !params.query.is_empty() {
-                    let haystack =
-                        format!("{} {} {}", entry.datetime, entry.status, entry.message);
-                    let matched = if params.fuzzy {
-                        let (h, q) = if params.match_case {
-                            (haystack.clone(), params.query.clone())
-                        } else {
-                            (
-                                haystack.to_ascii_lowercase(),
-                                params.query.to_ascii_lowercase(),
-                            )
-                        };
-                        let mut hi = h.chars();
-                        q.chars().all(|c| hi.any(|hc| hc == c))
-                    } else if params.match_case {
-                        haystack.contains(&params.query)
-                    } else {
-                        haystack
-                            .to_ascii_lowercase()
-                            .contains(&params.query.to_ascii_lowercase())
-                    };
-                    if !matched {
-                        return false;
-                    }
-                }
+    // ── Gemini ────────────────────────────────────────────────────────────
 
-                // ── DateTime range ───────────────────────────────────────
-                if !from_cmp.is_empty() && !entry.datetime.is_empty() {
-                    if entry.datetime < from_cmp {
-                        return false;
-                    }
-                }
-                if !to_cmp.is_empty() && !entry.datetime.is_empty() {
-                    let entry_prefix =
-                        &entry.datetime[..entry.datetime.len().min(to_cmp.len())];
-                    if entry_prefix > to_cmp.as_str() {
-                        return false;
-                    }
-                }
+    async fn gemini_chat(req: AiChatRequest) -> Result<String, String> {
 
-                true
-            })
-            .collect()
+        let model = if req.model.is_empty() { "gemini-1.5-flash".to_string() } else { req.model.clone() };
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, req.api_key
+        );
+
+        // Build Gemini contents array (no system role — prepend as first user turn)
+        let mut contents: Vec<serde_json::Value> = Vec::new();
+        for msg in &req.messages {
+            let role = match msg.role.as_str() {
+                "assistant" => "model",
+                "system"    => "user",   // Gemini has no system role
+                _           => "user",
+            };
+            contents.push(serde_json::json!({
+                "role": role,
+                "parts": [{ "text": msg.content }]
+            }));
+        }
+
+        let body = serde_json::json!({ "contents": contents });
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| format!("Read error: {e}"))?;
+
+        if !status.is_success() {
+            return Err(format!("Gemini API error {status}: {text}"));
+        }
+
+        let json: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("JSON parse error: {e}"))?;
+
+        json["candidates"][0]["content"]["parts"][0]["text"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| format!("Unexpected Gemini response: {text}"))
+    }
+
+    // ── OpenAI ────────────────────────────────────────────────────────────
+
+    async fn openai_chat(req: AiChatRequest) -> Result<String, String> {
+        let model = if req.model.is_empty() { "gpt-4o-mini".to_string() } else { req.model.clone() };
+
+        let messages: Vec<serde_json::Value> = req.messages.iter().map(|m| {
+            serde_json::json!({ "role": m.role, "content": m.content })
+        }).collect();
+
+        let body = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "max_tokens": 2048
+        });
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", req.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Network error: {e}"))?;
+
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| format!("Read error: {e}"))?;
+
+        if !status.is_success() {
+            return Err(format!("OpenAI API error {status}: {text}"));
+        }
+
+        let json: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("JSON parse error: {e}"))?;
+
+        json["choices"][0]["message"]["content"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| format!("Unexpected OpenAI response: {text}"))
     }
 }
 
@@ -189,7 +233,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::parse_log,
-            commands::filter_entries
+            commands::filter_entries,
+            commands::open_url,
+            commands::ai_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
