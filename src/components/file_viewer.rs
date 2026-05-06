@@ -1,203 +1,423 @@
-use crate::app::Theme;
+use crate::app::{FilterState, LogEntry, LogFile, Theme, DARK, LIGHT};
+use crate::components::severity::{level_colors, severity_rank};
 use leptos::prelude::*;
+
+// ── Filter logic ──────────────────────────────────────────────────────────────
+
+struct FilterParams {
+    status: String,
+    custom_status: String,
+    inherit_level: bool,
+    query: String,
+    match_case: bool,
+    fuzzy: bool,
+    #[allow(dead_code)]
+    regex_mode: bool,
+    invert_match: bool,
+    search_in_datetime: bool,
+    from_datetime: String,
+    to_datetime: String,
+    line_from: usize,
+    line_to: usize,
+    hide_no_level: bool,
+    min_severity: String,
+}
+
+/// Propagate level to continuation lines (lines with no status).
+fn propagate_levels(entries: &[LogEntry]) -> Vec<LogEntry> {
+    let mut out = Vec::with_capacity(entries.len());
+    let mut cur = String::new();
+    for e in entries {
+        if !e.status.is_empty() {
+            cur = e.status.clone();
+            out.push(e.clone());
+        } else {
+            let mut inh = e.clone();
+            inh.status = cur.clone();
+            out.push(inh);
+        }
+    }
+    out
+}
+
+fn apply_filters(entries: &[LogEntry], p: &FilterParams) -> Vec<LogEntry> {
+    let owned;
+    let entries: &[LogEntry] = if p.inherit_level {
+        owned = propagate_levels(entries);
+        &owned
+    } else {
+        entries
+    };
+
+    let from_cmp = p.from_datetime.replace('T', " ");
+    let to_cmp   = p.to_datetime.replace('T', " ");
+    let sf       = p.status.to_ascii_lowercase();
+    let cf       = p.custom_status.trim().to_ascii_uppercase();
+    let ql       = p.query.to_ascii_lowercase();
+    let min_rank = severity_rank(&p.min_severity);
+
+    entries.iter().filter(|e| {
+        // Level
+        if sf != "all" {
+            let es = e.status.to_ascii_uppercase();
+            let ok = if sf == "custom" {
+                cf.is_empty() || cf.split(',').map(|s| s.trim()).any(|s| es == s)
+            } else if sf == "warn" {
+                es == "WARN" || es == "WARNING"
+            } else {
+                es == sf.to_ascii_uppercase()
+            };
+            if !ok { return false; }
+        }
+        // Min severity
+        if p.min_severity != "all" && !e.status.is_empty() {
+            if severity_rank(&e.status) < min_rank { return false; }
+        }
+        // Hide no-level
+        if p.hide_no_level && e.status.is_empty() { return false; }
+        // Search
+        if !p.query.is_empty() {
+            let hay = if p.search_in_datetime {
+                format!("{} {} {}", e.datetime, e.status, e.message)
+            } else {
+                format!("{} {}", e.status, e.message)
+            };
+            let matched = if p.fuzzy {
+                let (h, q) = if p.match_case { (hay.clone(), p.query.clone()) }
+                             else { (hay.to_ascii_lowercase(), ql.clone()) };
+                let mut hi = h.chars();
+                q.chars().all(|c| hi.any(|hc| hc == c))
+            } else if p.match_case {
+                hay.contains(&p.query)
+            } else {
+                hay.to_ascii_lowercase().contains(&ql)
+            };
+            let matched = if p.invert_match { !matched } else { matched };
+            if !matched { return false; }
+        }
+        // DateTime
+        if !from_cmp.is_empty() && !e.datetime.is_empty() && e.datetime < from_cmp { return false; }
+        if !to_cmp.is_empty() && !e.datetime.is_empty() {
+            let ep = &e.datetime[..e.datetime.len().min(to_cmp.len())];
+            if ep > to_cmp.as_str() { return false; }
+        }
+        // Line range
+        if p.line_from > 0 && e.line < p.line_from { return false; }
+        if p.line_to   > 0 && e.line > p.line_to   { return false; }
+        true
+    }).cloned().collect()
+}
+
+// ── Log-group numbering ───────────────────────────────────────────────────────
+// A "group" is a levelled line + all following no-level lines.
+// All lines in a group share the group's starting line number for display.
+// The original `entry.line` is preserved for filtering; `group_line` is for display.
+#[derive(Clone)]
+struct DisplayEntry {
+    entry: LogEntry,
+    group_line: usize,   // line number of the group leader
+    is_continuation: bool,
+}
+
+fn assign_groups(entries: Vec<LogEntry>) -> Vec<DisplayEntry> {
+    let mut out = Vec::with_capacity(entries.len());
+    let mut group_line = 0usize;
+    for e in entries {
+        if !e.status.is_empty() {
+            group_line = e.line;
+            out.push(DisplayEntry { group_line, is_continuation: false, entry: e });
+        } else {
+            out.push(DisplayEntry { group_line, is_continuation: true, entry: e });
+        }
+    }
+    out
+}
+
+// ── Welcome page ─────────────────────────────────────────────────────────────
+
+#[component]
+fn WelcomePage(theme: ReadSignal<Theme>) -> impl IntoView {
+    let tok = move || if theme.get() == Theme::Dark { &DARK } else { &LIGHT };
+    view! {
+        <div style=move || format!(
+            "flex:1;overflow-y:auto;padding:40px 48px;background:{};",
+            tok().bg_base
+        )>
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:36px">
+                <div style="width:52px;height:52px;border-radius:14px;\
+                    background:linear-gradient(135deg,#7c9dff,#a78bfa);\
+                    display:flex;align-items:center;justify-content:center;\
+                    box-shadow:0 8px 24px rgba(124,157,255,0.25);flex-shrink:0">
+                    <span style="color:white;font-weight:800;font-size:22px">"L"</span>
+                </div>
+                <div>
+                    <h1 style=move || format!(
+                        "font-size:22px;font-weight:700;color:{};margin:0 0 3px;",
+                        tok().text_primary
+                    )>"Welcome to Logarithm"</h1>
+                    <p style=move || format!(
+                        "font-size:13px;color:{};margin:0;", tok().text_muted
+                    )>"A modern, fast log file viewer"</p>
+                </div>
+            </div>
+            <div style=move || format!(
+                "background:{};border:1px solid {};border-radius:10px;\
+                 padding:20px 24px;margin-bottom:20px;",
+                tok().bg_surface, tok().border
+            )>
+                <h2 style=move || format!(
+                    "font-size:11px;font-weight:700;color:{};margin:0 0 14px;\
+                     letter-spacing:0.06em;text-transform:uppercase;",
+                    tok().text_muted
+                )>"Quick Start"</h2>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                    {[
+                        ("📂","Open a log file","Ctrl+O or File → Open — only .log files"),
+                        ("🔍","Filter by level","Use the left panel to pick a level"),
+                        ("🔎","Search messages","Fuzzy, regex, case-sensitive, invert — all supported"),
+                        ("📅","Filter by date","From / To date range in the left panel"),
+                        ("✨","Logar AI","Click AI Chat in the bottom bar (coming soon)"),
+                    ].iter().map(|(icon, title, desc)| {
+                        let icon = *icon; let title = *title; let desc = *desc;
+                        view! {
+                            <div style="display:flex;align-items:flex-start;gap:12px">
+                                <span style="font-size:16px;flex-shrink:0;margin-top:1px">{icon}</span>
+                                <div>
+                                    <span style=move || format!(
+                                        "font-size:13px;font-weight:600;color:{};",
+                                        tok().text_primary
+                                    )>{title}</span>
+                                    <span style=move || format!(
+                                        "font-size:12px;color:{};margin-left:8px;",
+                                        tok().text_secondary
+                                    )>{desc}</span>
+                                </div>
+                            </div>
+                        }
+                    }).collect_view()}
+                </div>
+            </div>
+            <div style=move || format!(
+                "background:{};border:1px solid {};border-radius:10px;\
+                 padding:20px 24px;margin-bottom:20px;",
+                tok().bg_surface, tok().border
+            )>
+                <h2 style=move || format!(
+                    "font-size:11px;font-weight:700;color:{};margin:0 0 14px;\
+                     letter-spacing:0.06em;text-transform:uppercase;",
+                    tok().text_muted
+                )>"Keyboard Shortcuts"</h2>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    {[
+                        ("Ctrl+O","Open file"),("Ctrl+W","Close tab"),
+                        ("Ctrl+F","Focus search"),("Ctrl+T","Toggle theme"),
+                        ("Ctrl+B","Toggle filters"),("Ctrl+/","Show shortcuts"),
+                    ].iter().map(|(key, desc)| {
+                        let key = *key; let desc = *desc;
+                        view! {
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                                <span style=move || format!("font-size:12px;color:{}", tok().text_secondary)>{desc}</span>
+                                <span style=move || format!(
+                                    "font-size:11px;color:{};background:{};\
+                                     border:1px solid {};border-radius:4px;\
+                                     padding:1px 7px;font-family:'Fira Code',monospace;\
+                                     white-space:nowrap;flex-shrink:0;",
+                                    tok().text_secondary, tok().bg_elevated, tok().border
+                                )>{key}</span>
+                            </div>
+                        }
+                    }).collect_view()}
+                </div>
+            </div>
+            <p style=move || format!(
+                "font-size:11px;color:{};text-align:center;margin:0;", tok().text_muted
+            )>
+                "Built with Tauri + Leptos + Rust · "
+                <a href="https://github.com/mmycin/Logarithm"
+                    style=move || format!("color:{};text-decoration:none;cursor:pointer;", tok().accent)>
+                    "github.com/mmycin/Logarithm"
+                </a>
+            </p>
+        </div>
+    }
+}
+
+// ── Main viewer ───────────────────────────────────────────────────────────────
 
 #[component]
 pub fn FileViewer(
     theme: ReadSignal<Theme>,
-    open_files: ReadSignal<Vec<String>>,
+    open_files: ReadSignal<Vec<LogFile>>,
     active_file: ReadSignal<Option<usize>>,
+    filter_state: FilterState,
 ) -> impl IntoView {
-    let is_dark = move || theme.get() == Theme::Dark;
+    let tok  = move || if theme.get() == Theme::Dark { &DARK } else { &LIGHT };
+    let dark = move || theme.get() == Theme::Dark;
 
-    let log_lines = vec![
-        ("2024-05-06 10:23:45", "INFO", "Application started successfully"),
-        ("2024-05-06 10:23:46", "DEBUG", "Initializing database connection"),
-        ("2024-05-06 10:23:47", "SUCCESS", "Connected to PostgreSQL database"),
-        ("2024-05-06 10:23:48", "INFO", "Loading configuration from config.toml"),
-        ("2024-05-06 10:23:49", "WARNING", "Deprecated configuration key used: 'log_level'"),
-        ("2024-05-06 10:23:50", "INFO", "Starting HTTP server on port 8080"),
-        ("2024-05-06 10:23:51", "SUCCESS", "Server listening on http://localhost:8080"),
-        ("2024-05-06 10:24:00", "INFO", "Received request: GET /api/v1/users"),
-        ("2024-05-06 10:24:01", "DEBUG", "Querying database for users"),
-        ("2024-05-06 10:24:02", "SUCCESS", "Fetched 15 users from database"),
-        ("2024-05-06 10:24:03", "INFO", "Response sent: 200 OK"),
-        ("2024-05-06 10:24:15", "ERROR", "Failed to process request: connection timeout"),
-        ("2024-05-06 10:24:16", "INFO", "Retrying request (1/3)"),
-        ("2024-05-06 10:24:20", "SUCCESS", "Request completed successfully on retry"),
-    ];
+    let selected_file = move || -> Option<LogFile> {
+        active_file.get().and_then(|idx| open_files.get().get(idx).cloned())
+    };
 
-    let selected_file = move || {
-        active_file
-            .get()
-            .and_then(|idx| open_files.get().get(idx).cloned())
+    let display_entries = move || -> Vec<DisplayEntry> {
+        let Some(file) = selected_file() else { return vec![]; };
+        let lf = filter_state.line_from.get().parse::<usize>().unwrap_or(0);
+        let lt = filter_state.line_to.get().parse::<usize>().unwrap_or(0);
+        let filtered = apply_filters(&file.entries, &FilterParams {
+            status:             filter_state.selected_status.get(),
+            custom_status:      filter_state.custom_status.get(),
+            inherit_level:      filter_state.inherit_level.get(),
+            query:              filter_state.search_query.get(),
+            match_case:         filter_state.match_case.get(),
+            fuzzy:              filter_state.fuzzy_find.get(),
+            regex_mode:         filter_state.regex_mode.get(),
+            invert_match:       filter_state.invert_match.get(),
+            search_in_datetime: filter_state.search_in_datetime.get(),
+            from_datetime:      filter_state.from_datetime.get(),
+            to_datetime:        filter_state.to_datetime.get(),
+            line_from:          lf,
+            line_to:            lt,
+            hide_no_level:      filter_state.hide_no_level.get(),
+            min_severity:       filter_state.min_severity.get(),
+        });
+        assign_groups(filtered)
     };
 
     view! {
-        <div class=move || {
-            if is_dark() {
-                "flex-1 flex flex-col bg-[#1e1e2e]"
-            } else {
-                "flex-1 flex flex-col bg-[#eff1f5]"
-            }
-        }>
-            <div class="flex-1 overflow-auto font-mono">
-                <div class=move || {
-                    if is_dark() {
-                        "px-3 py-2 text-[12px] text-[#a6adc8] border-b border-[#313244]/50 bg-[#11111b]"
-                    } else {
-                        "px-3 py-2 text-[12px] text-[#6c6f85] border-b border-[#9ca0b0]/30 bg-[#e6e9ef]"
-                    }
-                }>
-                    {move || selected_file().unwrap_or_else(|| "No file selected".to_string())}
-                </div>
-                {move || {
-                    if selected_file().is_none() {
-                        view! {
-                            <div class=move || {
-                                if is_dark() {
-                                    "px-3 py-6 text-[13px] text-[#a6adc8]"
-                                } else {
-                                    "px-3 py-6 text-[13px] text-[#6c6f85]"
-                                }
-                            }>
-                                "Open a file to view its contents."
-                            </div>
-                        }
-                        .into_any()
-                    } else {
-                        view! {
-                <div class=move || {
-                    if is_dark() {
-                        "flex items-center px-3 py-1 border-b border-[#313244]/50 bg-[#181825] sticky top-0 z-10"
-                    } else {
-                        "flex items-center px-3 py-1 border-b border-[#9ca0b0]/30 bg-[#e6e9ef] sticky top-0 z-10"
-                    }
-                }>
-                    <span class=move || {
-                        if is_dark() {
-                            "w-10 text-right text-[11px] text-[#6c7086] mr-3 flex-shrink-0 select-none"
-                        } else {
-                            "w-10 text-right text-[11px] text-[#8c8fa1] mr-3 flex-shrink-0 select-none"
-                        }
-                    }>
-                        "Line"
-                    </span>
-                    <span class=move || {
-                        if is_dark() {
-                            "w-28 text-[11px] text-[#a6adc8] mr-3 flex-shrink-0"
-                        } else {
-                            "w-28 text-[11px] text-[#6c6f85] mr-3 flex-shrink-0"
-                        }
-                    }>
-                        "Date"
-                    </span>
-                    <span class=move || {
-                        if is_dark() {
-                            "w-24 text-[11px] text-[#a6adc8] mr-3 flex-shrink-0"
-                        } else {
-                            "w-24 text-[11px] text-[#6c6f85] mr-3 flex-shrink-0"
-                        }
-                    }>
-                        "Time"
-                    </span>
-                    <span class=move || {
-                        if is_dark() {
-                            "w-20 text-[11px] text-[#a6adc8] mr-3 flex-shrink-0 text-center"
-                        } else {
-                            "w-20 text-[11px] text-[#6c6f85] mr-3 flex-shrink-0 text-center"
-                        }
-                    }>
-                        "Status"
-                    </span>
-                    <span class=move || {
-                        if is_dark() {
-                            "text-[11px] text-[#a6adc8]"
-                        } else {
-                            "text-[11px] text-[#6c6f85]"
-                        }
-                    }>
-                        "Message"
-                    </span>
-                </div>
-                {log_lines
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, (time, level, msg))| {
-                        let (date_part, time_part) = time
-                            .split_once(' ')
-                            .or_else(|| time.split_once('T'))
-                            .map(|(d, t)| (d, t))
-                            .unwrap_or((time, ""));
-
-                        let level_color = match *level {
-                            "INFO" => if is_dark() { "#89b4fa" } else { "#1e66f5" },
-                            "DEBUG" => if is_dark() { "#a6adc8" } else { "#6c6f85" },
-                            "SUCCESS" => if is_dark() { "#a6e3a1" } else { "#40a02b" },
-                            "WARNING" => if is_dark() { "#f9e2af" } else { "#df8e1d" },
-                            "ERROR" => if is_dark() { "#f38ba8" } else { "#d20f39" },
-                            _ => if is_dark() { "#cdd6f4" } else { "#4c4f69" },
-                        };
-
-                        view! {
-                            <div class=move || {
-                                if is_dark() {
-                                    "flex items-center px-3 py-1 border-b border-[#313244]/30 hover:bg-[#313244]/15 transition-all duration-50"
-                                } else {
-                                    "flex items-center px-3 py-1 border-b border-[#9ca0b0]/15 hover:bg-[#ccd0da]/15 transition-all duration-50"
-                                }
-                            }>
-                                <span class=move || {
-                                    if is_dark() {
-                                        "w-10 text-right text-[11px] text-[#6c7086] mr-3 flex-shrink-0 select-none"
-                                    } else {
-                                        "w-10 text-right text-[11px] text-[#8c8fa1] mr-3 flex-shrink-0 select-none"
-                                    }
-                                }>
-                                    {format!("{}", idx + 1)}
-                                </span>
-                                <span class=move || {
-                                    if is_dark() {
-                                        "w-28 text-[11px] text-[#a6adc8] mr-3 flex-shrink-0"
-                                    } else {
-                                        "w-28 text-[11px] text-[#6c6f85] mr-3 flex-shrink-0"
-                                    }
-                                }>
-                                    {date_part.to_string()}
-                                </span>
-                                <span class=move || {
-                                    if is_dark() {
-                                        "w-24 text-[11px] text-[#a6adc8] mr-3 flex-shrink-0"
-                                    } else {
-                                        "w-24 text-[11px] text-[#6c6f85] mr-3 flex-shrink-0"
-                                    }
-                                }>
-                                    {time_part.to_string()}
-                                </span>
-                                <span
-                                    class="w-20 px-2 py-0.5 rounded text-[11px] font-semibold mr-3 flex-shrink-0 text-center"
-                                    style:background-color=format!("{}/12", level_color)
-                                    style:color=level_color
-                                >
-                                    {level.to_string()}
-                                </span>
-                                <span class=move || {
-                                    if is_dark() {
-                                        "text-[13px] text-[#cdd6f4]"
-                                    } else {
-                                        "text-[13px] text-[#4c4f69]"
-                                    }
-                                }>
-                                    {msg.to_string()}
+        <div style=move || format!(
+            "flex:1;display:flex;flex-direction:column;background:{};overflow:hidden;",
+            tok().bg_base
+        )>
+            {move || {
+                if selected_file().is_none() {
+                    view! { <WelcomePage theme /> }.into_any()
+                } else {
+                    view! {
+                        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+                            // Column header
+                            <div style=move || format!(
+                                "display:flex;align-items:center;padding:0 12px;height:26px;\
+                                 border-bottom:1px solid {};background:{};flex-shrink:0;",
+                                tok().border_subtle, tok().bg_surface
+                            )>
+                                <span style=move || format!(
+                                    "width:44px;text-align:right;font-size:10px;font-weight:600;\
+                                     color:{};margin-right:12px;flex-shrink:0;letter-spacing:0.06em;",
+                                    tok().text_muted
+                                )>"LINE"</span>
+                                <span style=move || format!(
+                                    "width:160px;font-size:10px;font-weight:600;color:{};\
+                                     margin-right:12px;flex-shrink:0;letter-spacing:0.06em;",
+                                    tok().text_muted
+                                )>"TIMESTAMP"</span>
+                                <span style=move || format!(
+                                    "width:72px;font-size:10px;font-weight:600;color:{};\
+                                     margin-right:12px;flex-shrink:0;letter-spacing:0.06em;",
+                                    tok().text_muted
+                                )>"LEVEL"</span>
+                                <span style=move || format!(
+                                    "font-size:10px;font-weight:600;color:{};letter-spacing:0.06em;",
+                                    tok().text_muted
+                                )>"MESSAGE"</span>
+                                <span style=move || format!(
+                                    "margin-left:auto;font-size:10px;color:{};font-variant-numeric:tabular-nums;",
+                                    tok().text_muted
+                                )>
+                                    {move || {
+                                        let count = display_entries().len();
+                                        let total = selected_file().map(|f| f.entries.len()).unwrap_or(0);
+                                        if count == total { format!("{} entries", count) }
+                                        else { format!("{} / {} entries", count, total) }
+                                    }}
                                 </span>
                             </div>
-                        }
-                    })
-                    .collect_view()}
-                        }
-                        .into_any()
-                    }
-                }}
-            </div>
+
+                            // Log rows
+                            <div style="flex:1;overflow-y:auto;overflow-x:auto;font-family:'Fira Code',monospace;">
+                                {move || {
+                                    let entries = display_entries();
+                                    if entries.is_empty() {
+                                        return view! {
+                                            <div style="display:flex;align-items:center;justify-content:center;height:80px">
+                                                <span style=move || format!("font-size:13px;color:{}", tok().text_muted)>
+                                                    "No entries match the current filters."
+                                                </span>
+                                            </div>
+                                        }.into_any();
+                                    }
+
+                                    entries.into_iter().map(|de| {
+                                        let level = de.entry.status.clone();
+                                        let (lc, lb, lborder, accent) = level_colors(&level, dark());
+                                        let show_badge = !level.is_empty() && !de.is_continuation;
+                                        let row_bl = if accent != "transparent" && !de.is_continuation {
+                                            format!("border-left:2px solid {}55;", accent)
+                                        } else if de.is_continuation {
+                                            // Continuation lines get a subtle indent line
+                                            format!("border-left:2px solid {}22;", accent)
+                                        } else {
+                                            "border-left:2px solid transparent;".to_string()
+                                        };
+
+                                        // Continuation lines are slightly dimmed
+                                        let msg_opacity = if de.is_continuation { "opacity:0.65;" } else { "" };
+
+                                        view! {
+                                            <div style=move || format!(
+                                                "display:flex;align-items:baseline;padding:{}12px;\
+                                                 border-bottom:1px solid {};{}cursor:default;",
+                                                if de.is_continuation { "1px " } else { "2px " },
+                                                tok().border_subtle,
+                                                row_bl
+                                            )>
+                                                // Group line number (same for all lines in a group)
+                                                <span style=move || format!(
+                                                    "width:44px;text-align:right;font-size:11px;\
+                                                     color:{};margin-right:12px;flex-shrink:0;\
+                                                     user-select:none;font-variant-numeric:tabular-nums;",
+                                                    if de.is_continuation { tok().border } else { tok().text_muted }
+                                                )>
+                                                    {if de.is_continuation { String::new() } else { de.group_line.to_string() }}
+                                                </span>
+                                                // Timestamp
+                                                <span style=move || format!(
+                                                    "width:160px;font-size:11px;color:{};\
+                                                     margin-right:12px;flex-shrink:0;\
+                                                     font-variant-numeric:tabular-nums;{}",
+                                                    tok().text_secondary,
+                                                    if de.is_continuation { "opacity:0.4;" } else { "" }
+                                                )>{de.entry.datetime.clone()}</span>
+                                                // Level badge (only on group leader)
+                                                <span style="width:72px;margin-right:12px;flex-shrink:0;display:flex;align-items:center">
+                                                    {if show_badge {
+                                                        view! {
+                                                            <span style=format!(
+                                                                "display:inline-block;padding:1px 6px;\
+                                                                 border-radius:4px;font-size:10px;\
+                                                                 font-weight:700;letter-spacing:0.05em;\
+                                                                 white-space:nowrap;line-height:1.4;\
+                                                                 color:{lc};background:{lb};border:1px solid {lborder};"
+                                                            )>{level.clone()}</span>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! { <span/> }.into_any()
+                                                    }}
+                                                </span>
+                                                // Message
+                                                <span style=move || format!(
+                                                    "font-size:12px;color:{};line-height:1.6;\
+                                                     word-break:break-all;user-select:text;{}",
+                                                    tok().text_primary,
+                                                    msg_opacity
+                                                )>{de.entry.message}</span>
+                                            </div>
+                                        }
+                                    }).collect_view().into_any()
+                                }}
+                            </div>
+                        </div>
+                    }.into_any()
+                }
+            }}
         </div>
     }
 }
