@@ -7,13 +7,14 @@
     "beforeDevCommand": "trunk serve",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "trunk build",
-    "frontendDist": "../dist"
+    "frontendDist": "../dist",
+    "removeUnusedCommands": true
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "logarithm",
+        "title": "Logarithm - A Log Viewer",
         "width": 800,
         "height": 600
       }
