@@ -34,7 +34,7 @@ pub struct AiMessage {
 }
 
 mod commands {
-    use super::{AiChatRequest, FilterParams, LogEntry};
+    use super::{AiChatRequest, AiMessage, FilterParams, LogEntry};
 
     #[tauri::command]
     pub fn parse_log(text: String) -> Vec<LogEntry> {
@@ -127,40 +127,68 @@ mod commands {
     /// Send a chat message to Gemini or OpenAI and return the assistant reply.
     #[tauri::command]
     pub async fn ai_chat(req: AiChatRequest) -> Result<String, String> {
-        match req.provider.as_str() {
-            "gemini" => gemini_chat(req).await,
-            "openai" => openai_chat(req).await,
-            other => Err(format!("Unknown provider: {other}")),
-        }
+        // Hard timeout: 30 s — prevents infinite hang
+        let fut = async {
+            match req.provider.as_str() {
+                "gemini" => gemini_chat(req).await,
+                "openai" => openai_chat(req).await,
+                other    => Err(format!("Unknown provider: {other}")),
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(30), fut)
+            .await
+            .unwrap_or_else(|_| Err("Request timed out after 30 seconds.".into()))
     }
 
     // ── Gemini ────────────────────────────────────────────────────────────
 
     async fn gemini_chat(req: AiChatRequest) -> Result<String, String> {
-
         let model = if req.model.is_empty() { "gemini-1.5-flash".to_string() } else { req.model.clone() };
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
             model, req.api_key
         );
 
-        // Build Gemini contents array (no system role — prepend as first user turn)
-        let mut contents: Vec<serde_json::Value> = Vec::new();
+        // Gemini requires strictly alternating user/model turns.
+        // Extract the system prompt (first message with role "system") and prepend
+        // its text to the first real user message so we never send two user turns in a row.
+        let mut system_text = String::new();
+        let mut chat_msgs: Vec<&AiMessage> = Vec::new();
         for msg in &req.messages {
-            let role = match msg.role.as_str() {
-                "assistant" => "model",
-                "system"    => "user",   // Gemini has no system role
-                _           => "user",
+            if msg.role == "system" {
+                system_text = msg.content.clone();
+            } else {
+                chat_msgs.push(msg);
+            }
+        }
+
+        let mut contents: Vec<serde_json::Value> = Vec::new();
+        for (i, msg) in chat_msgs.iter().enumerate() {
+            let role = if msg.role == "assistant" { "model" } else { "user" };
+            // Prepend system text to the very first user message
+            let text = if i == 0 && !system_text.is_empty() && role == "user" {
+                format!("{}\n\n{}", system_text, msg.content)
+            } else {
+                msg.content.clone()
             };
             contents.push(serde_json::json!({
                 "role": role,
-                "parts": [{ "text": msg.content }]
+                "parts": [{ "text": text }]
             }));
+        }
+
+        // Gemini needs at least one message
+        if contents.is_empty() {
+            return Err("No messages to send.".into());
         }
 
         let body = serde_json::json!({ "contents": contents });
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .build()
+            .map_err(|e| format!("Client build error: {e}"))?;
+
         let resp = client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -200,7 +228,11 @@ mod commands {
             "max_tokens": 2048
         });
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .build()
+            .map_err(|e| format!("Client build error: {e}"))?;
+
         let resp = client
             .post("https://api.openai.com/v1/chat/completions")
             .header("Authorization", format!("Bearer {}", req.api_key))

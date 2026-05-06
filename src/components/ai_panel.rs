@@ -61,15 +61,16 @@ pub fn AiPanel(
 ) -> impl IntoView {
     let tok = move || if theme.get() == Theme::Dark { &DARK } else { &LIGHT };
 
-    // Load saved provider + keys from localStorage
+    // Load saved provider + keys + model from localStorage
     let saved_prov = ls_get("logan_provider").unwrap_or_default();
     let init_prov  = Provider::from_str(&saved_prov);
     let init_key   = ls_get(init_prov.ls_key()).unwrap_or_default();
+    let init_model = ls_get("logan_model").unwrap_or_default();
     let init_ready = !init_key.is_empty();
 
     let (provider, set_provider)     = signal(init_prov);
     let (api_key, set_api_key)       = signal(init_key);
-    let (model, set_model)           = signal(String::new());
+    let (model, set_model)           = signal(init_model);
     let (input, set_input)           = signal(String::new());
     let (messages, set_messages)     = signal(Vec::<ChatMessage>::new());
     let (loading, set_loading)       = signal(false);
@@ -116,9 +117,9 @@ pub fn AiPanel(
         spawn_local(async move {
             // Build the request object
             let req = js_sys::Object::new();
-            let _ = Reflect::set(&req, &JsValue::from_str("provider"), &JsValue::from_str(prov_str));
-            let _ = Reflect::set(&req, &JsValue::from_str("apiKey"),   &JsValue::from_str(&key));
-            let _ = Reflect::set(&req, &JsValue::from_str("model"),    &JsValue::from_str(&mdl));
+            let _ = Reflect::set(&req, &JsValue::from_str("provider"),  &JsValue::from_str(prov_str));
+            let _ = Reflect::set(&req, &JsValue::from_str("api_key"),   &JsValue::from_str(&key));
+            let _ = Reflect::set(&req, &JsValue::from_str("model"),     &JsValue::from_str(&mdl));
 
             let msgs_arr = js_sys::Array::new();
 
@@ -374,7 +375,11 @@ pub fn AiPanel(
                             )
                             placeholder=move || provider.get().default_model()
                             prop:value=move || model.get()
-                            on:input=move |ev| set_model.set(event_target_value(&ev))
+                            on:input=move |ev| {
+                                let v = event_target_value(&ev);
+                                ls_set("logan_model", &v);
+                                set_model.set(v);
+                            }
                         />
                     </div>
 
