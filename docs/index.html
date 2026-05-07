@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Logarithm - A modern, blazing-fast log file viewer with AI-powered analysis. Built with Tauri and Rust for exceptional performance.">
+    <meta name="keywords" content="log viewer, log analyzer, AI log analysis, Tauri, Rust, developer tools">
+    <meta name="author" content="mmycin">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Logarithm - Modern Log File Viewer">
+    <meta property="og:description" content="A blazing-fast log file viewer with AI-powered analysis">
+    <meta property="og:image" content="./banner.jpg">
+
+    <title>Logarithm - Modern Log File Viewer with AI</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-tertiary: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --border: #e2e8f0;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --gradient-start: #3b82f6;
+            --gradient-end: #8b5cf6;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-tertiary: #94a3b8;
+            --accent: #60a5fa;
+            --accent-hover: #3b82f6;
+            --border: #334155;
+            --shadow: rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Header */
+        header {
+            position: sticky;
+            top: 0;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        [data-theme="dark"] header {
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .logo img {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent);
+        }
+
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: none;
+            padding: 0.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.25rem;
+            transition: transform 0.2s;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 6rem 0;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-image {
+            margin: 3rem 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px var(--shadow);
+        }
+
+        .hero-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.875rem 2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-secondary);
+            transform: translateY(-2px);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 6rem 0;
+            background: var(--bg-secondary);
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 3rem;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-bottom: 4rem;
+        }
+
+        .feature-card {
+            background: var(--bg-primary);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px var(--shadow);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Screenshots Section */
+        .screenshots {
+            padding: 6rem 0;
+        }
+
+        .screenshot-container {
+            margin: 3rem 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px var(--shadow);
+        }
+
+        .screenshot-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .screenshot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        /* Download Section */
+        .download {
+            padding: 6rem 0;
+            background: var(--bg-secondary);
+            text-align: center;
+        }
+
+        .download-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .download-card {
+            background: var(--bg-primary);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .download-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .download-card .platform-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .download-links {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+
+        .download-link {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .download-link:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* Footer */
+        footer {
+            padding: 3rem 0;
+            background: var(--bg-tertiary);
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover {
+            color: var(--accent);
+        }
+
+        .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 2rem 0;
+            flex-wrap: wrap;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .nav-links {
+                gap: 1rem;
+            }
+
+            .screenshot-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in-up {
+            animation: fadeInUp 0.6s ease-out;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <nav class="container">
+            <a href="#" class="logo">
+                <img src="./LoganIcon.png" alt="Logarithm Logo">
+                <span>Logarithm</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#screenshots">Screenshots</a></li>
+                <li><a href="#download">Download</a></li>
+                <li><a href="https://github.com/mmycin/Logarithm" target="_blank">GitHub</a></li>
+                <li><button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">🌙</button></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero container">
+            <h1 class="fade-in-up">Modern Log File Viewer</h1>
+            <p class="fade-in-up">A blazing-fast, AI-powered log analyzer built with Tauri and Rust. Beautiful
+                interface, powerful features, exceptional performance.</p>
+
+            <div class="cta-buttons fade-in-up">
+                <a href="#download" class="btn btn-primary">
+                    <span>⬇️</span>
+                    Download Now
+                </a>
+                <a href="https://github.com/mmycin/Logarithm" class="btn btn-secondary" target="_blank">
+                    <span>⭐</span>
+                    View on GitHub
+                </a>
+            </div>
+
+            <div class="hero-image fade-in-up">
+                <img id="hero-img" src="./hero.png" alt="Logarithm Screenshot">
+            </div>
+
+            <div class="badges">
+                <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
+                <img src="https://img.shields.io/badge/Rust-1.70+-orange.svg" alt="Rust">
+                <img src="https://img.shields.io/badge/Tauri-2.0-blue.svg" alt="Tauri">
+                <img src="https://img.shields.io/badge/Leptos-0.7-purple.svg" alt="Leptos">
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section id="features" class="features">
+            <div class="container">
+                <h2 class="section-title">Powerful Features</h2>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🚀</div>
+                        <h3>Blazing Fast</h3>
+                        <p>Native performance with Rust backend. Handle large log files (10k+ lines) with ease.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <h3>AI-Powered Analysis</h3>
+                        <p>Integrated AI assistant (Logan) with support for OpenAI, Anthropic, Gemini, and Groq.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🔍</div>
+                        <h3>Advanced Filtering</h3>
+                        <p>Filter by level, search with regex, date/time ranges, line numbers, and severity.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🎨</div>
+                        <h3>Beautiful UI</h3>
+                        <p>Modern, clean interface with dark/light themes and syntax highlighting.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Real-time Search</h3>
+                        <p>Instant filtering with fuzzy matching, case-sensitive, and regex support.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🔒</div>
+                        <h3>Privacy First</h3>
+                        <p>All log processing happens locally. Your data never leaves your machine.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">📂</div>
+                        <h3>Multi-File Support</h3>
+                        <p>Open multiple log files simultaneously with tab-based interface.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">⌨️</div>
+                        <h3>Keyboard Shortcuts</h3>
+                        <p>Efficient navigation with comprehensive keyboard shortcuts.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">💾</div>
+                        <h3>Lightweight</h3>
+                        <p>Small footprint, minimal resource usage. Built with efficiency in mind.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Screenshots Section -->
+        <section id="screenshots" class="screenshots">
+            <div class="container">
+                <h2 class="section-title">See It In Action</h2>
+
+                <div class="screenshot-container">
+                    <img id="main-screenshot" src="./ss_dark.jpg" alt="Logarithm Main Interface">
+                </div>
+
+                <div class="screenshot-grid">
+                    <div class="screenshot-container">
+                        <img src="./ss2_dark.jpg" alt="AI Assistant Feature">
+                    </div>
+                    <div class="screenshot-container">
+                        <img id="light-screenshot" src="./ss_light.png" alt="Light Theme">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Download Section -->
+        <section id="download" class="download">
+            <div class="container">
+                <h2 class="section-title">Download Logarithm</h2>
+                <p style="color: var(--text-secondary); font-size: 1.125rem; margin-bottom: 2rem;">
+                    Available for Windows, macOS, and Linux
+                </p>
+
+                <div class="download-grid">
+                    <div class="download-card">
+                        <div class="platform-icon">🪟</div>
+                        <h3>Windows</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Windows 10/11 (x64)</p>
+                        <div class="download-links">
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                Download .exe
+                            </a>
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                Download .msi
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="download-card">
+                        <div class="platform-icon">🍎</div>
+                        <h3>macOS</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">macOS 10.15+</p>
+                        <div class="download-links">
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                Apple Silicon (.dmg)
+                            </a>
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                Intel (.dmg)
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="download-card">
+                        <div class="platform-icon">🐧</div>
+                        <h3>Linux</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Ubuntu 20.04+</p>
+                        <div class="download-links">
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                Download .deb
+                            </a>
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                Download .AppImage
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <p style="margin-top: 2rem; color: var(--text-secondary);">
+                    Or build from source:
+                    <a href="https://github.com/mmycin/Logarithm#building-from-source"
+                        style="color: var(--accent);">View instructions</a>
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/mmycin/Logarithm">GitHub</a>
+                <a href="https://github.com/mmycin/Logarithm/issues">Issues</a>
+                <a href="https://github.com/mmycin/Logarithm/blob/main/README.md">Documentation</a>
+                <a href="https://github.com/mmycin/Logarithm/blob/main/LICENSE">License</a>
+            </div>
+            <p>&copy; 2024 Logarithm. Built with ❤️ by <a href="https://github.com/mmycin"
+                    style="color: var(--accent);">mmycin</a></p>
+            <p style="margin-top: 0.5rem; font-size: 0.875rem;">
+                Built with <a href="https://tauri.app" style="color: var(--accent);">Tauri</a>,
+                <a href="https://leptos.dev" style="color: var(--accent);">Leptos</a>, and
+                <a href="https://www.rust-lang.org" style="color: var(--accent);">Rust</a>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+
+            // Update theme toggle button
+            const btn = document.querySelector('.theme-toggle');
+            btn.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+
+            // Update images based on theme
+            updateImages(newTheme);
+        }
+
+        // Update images based on theme
+        function updateImages(theme) {
+            const heroImg = document.getElementById('hero-img');
+            const mainScreenshot = document.getElementById('main-screenshot');
+            const lightScreenshot = document.getElementById('light-screenshot');
+
+            if (theme === 'dark') {
+                heroImg.src = './hero.png';
+                mainScreenshot.src = './ss_dark.jpg';
+                lightScreenshot.src = './ss_light.png';
+            } else {
+                heroImg.src = './hero_light.png';
+                mainScreenshot.src = './ss_light.png';
+                lightScreenshot.src = './ss2_light.jpg';
+            }
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.querySelector('.theme-toggle').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+        updateImages(savedTheme);
+
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
