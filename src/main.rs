@@ -1,5 +1,9 @@
+mod ai;
 mod app;
 pub mod components;
+mod markdown;
+mod shared;
+mod viewer;
 
 use app::*;
 use leptos::prelude::*;

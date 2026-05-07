@@ -580,6 +580,14 @@ video {
 
 /* Light mode scrollbar */
 
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.20);
+}
+
 /* datetime-local input — hide the calendar icon in dark mode */
 
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
@@ -592,8 +600,38 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   opacity: 0.8;
 }
 
-.visible {
-  visibility: visible;
+.container {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .container {
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1024px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1280px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .container {
+    max-width: 1536px;
+  }
 }
 
 .static {

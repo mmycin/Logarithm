@@ -1,4 +1,6 @@
-use crate::app::{FilterState, LogEntry, LogFile, Theme, DARK, LIGHT};
+use crate::app::FilterState;
+use crate::shared::constants::{DARK, LIGHT};
+use crate::shared::types::{LogEntry, LogFile, Theme};
 use leptos::ev::KeyboardEvent;
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;

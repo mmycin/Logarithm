@@ -1,4 +1,5 @@
-use crate::app::{Theme, DARK, LIGHT};
+use crate::shared::constants::{DARK, LIGHT};
+use crate::shared::types::Theme;
 use leptos::prelude::*;
 
 #[component]

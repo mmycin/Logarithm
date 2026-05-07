@@ -1,33 +1,9 @@
-use crate::components::{AiPanel, BottomBar, FileBar, FileViewer, FilterPanel, TitleBar};
+use crate::ai::AiPanel;
+use crate::components::{BottomBar, FileBar, FilterPanel, TitleBar};
+use crate::shared::constants::{DARK, LIGHT};
+use crate::shared::types::{LoganAction, LogFile, Theme};
+use crate::viewer::FileViewer;
 use leptos::prelude::*;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Theme { Dark, Light }
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LogEntry {
-    pub line: usize,
-    pub datetime: String,
-    pub status: String,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogFile {
-    pub name: String,
-    pub entries: Vec<LogEntry>,
-}
-
-/// Action sent from FileViewer → AiPanel via shared signal.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LoganAction {
-    /// Add a line as context chip — does NOT auto-send.
-    AddContext { file: String, line: usize, text: String },
-    /// Add multiple lines as context chips — does NOT auto-send.
-    AddMultipleContext { items: Vec<(String, usize, String)> }, // (file, line, text)
-    /// Add a line and immediately send an "Explain" request.
-    Explain    { file: String, line: usize, text: String },
-}
 
 /// All filter state — lifted to App so FilterPanel and FileViewer share it.
 #[derive(Clone, Copy)]
@@ -72,55 +48,6 @@ pub struct FilterState {
     pub min_severity: ReadSignal<String>,      // "all"|"debug"|"info"|"warn"|"error"|"fatal"
     pub set_min_severity: WriteSignal<String>,
 }
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-pub struct Tokens {
-    pub bg_base:       &'static str,
-    pub bg_surface:    &'static str,
-    pub bg_elevated:   &'static str,
-    pub bg_input:      &'static str,
-    pub bg_active:     &'static str,
-    pub border:        &'static str,
-    pub border_subtle: &'static str,
-    pub text_primary:   &'static str,
-    pub text_secondary: &'static str,
-    pub text_muted:     &'static str,
-    pub accent:        &'static str,
-    pub accent_bg:     &'static str,
-    pub accent_border: &'static str,
-}
-
-pub const DARK: Tokens = Tokens {
-    bg_base:       "#0f1117",
-    bg_surface:    "#161b27",
-    bg_elevated:   "#1c2333",
-    bg_input:      "#1a2030",
-    bg_active:     "#0f1117",
-    border:        "rgba(255,255,255,0.08)",
-    border_subtle: "rgba(255,255,255,0.04)",
-    text_primary:   "#e8eaf0",
-    text_secondary: "#8b92a8",
-    text_muted:     "#4a5168",
-    accent:        "#7c9dff",
-    accent_bg:     "rgba(124,157,255,0.12)",
-    accent_border: "rgba(124,157,255,0.30)",
-};
-
-pub const LIGHT: Tokens = Tokens {
-    bg_base:       "#f8f9fc",
-    bg_surface:    "#eef0f6",
-    bg_elevated:   "#ffffff",
-    bg_input:      "#ffffff",
-    bg_active:     "#f8f9fc",
-    border:        "rgba(0,0,0,0.09)",
-    border_subtle: "rgba(0,0,0,0.05)",
-    text_primary:   "#1a1d2e",
-    text_secondary: "#5a6080",
-    text_muted:     "#9098b8",
-    accent:        "#4f6ef7",
-    accent_bg:     "rgba(79,110,247,0.10)",
-    accent_border: "rgba(79,110,247,0.28)",
-};
 
 #[component]
 pub fn App() -> impl IntoView {

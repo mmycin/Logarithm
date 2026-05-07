@@ -1,4 +1,6 @@
-use crate::app::{FilterState, LogFile, Theme, DARK, LIGHT};
+use crate::app::FilterState;
+use crate::shared::constants::{DARK, LIGHT};
+use crate::shared::types::{LogFile, Theme};
 use crate::components::filter_section::FilterSection;
 use crate::components::severity::{LEVEL_PILLS, MIN_SEV};
 use leptos::prelude::*;
