@@ -13,6 +13,30 @@ extern "C" {
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
 }
 
+// ── localStorage helpers ──────────────────────────────────────────────────────
+
+fn ls_get(key: &str) -> Option<String> {
+    web_sys::window()?
+        .local_storage().ok()??
+        .get_item(key).ok()?
+}
+
+fn ls_set(key: &str, val: &str) {
+    if let Some(Ok(Some(ls))) = web_sys::window().map(|w| w.local_storage()) {
+        let _ = ls.set_item(key, val);
+    }
+}
+
+fn save_open_files(files: &[LogFile]) {
+    // Save file names and their content to localStorage
+    let file_data: Vec<(String, Vec<LogEntry>)> = files.iter()
+        .map(|f| (f.name.clone(), f.entries.clone()))
+        .collect();
+    if let Ok(json) = serde_json::to_string(&file_data) {
+        ls_set("logan_open_files_data", &json);
+    }
+}
+
 #[component]
 pub fn FileBar(
     theme: ReadSignal<Theme>,
@@ -28,6 +52,31 @@ pub fn FileBar(
 
     let tok = move || if theme.get() == Theme::Dark { &DARK } else { &LIGHT };
     let file_input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+
+    // Restore previously opened files on mount
+    let (restored, set_restored) = signal(false);
+    Effect::new(move |_| {
+        if !restored.get() && open_files.get().is_empty() {
+            set_restored.set(true);
+            if let Some(json) = ls_get("logan_open_files_data") {
+                if let Ok(file_data) = serde_json::from_str::<Vec<(String, Vec<LogEntry>)>>(&json) {
+                    set_open_files.set(file_data.into_iter().map(|(name, entries)| {
+                        LogFile { name, entries }
+                    }).collect());
+                    // Set the first file as active
+                    if !open_files.get().is_empty() {
+                        set_active_file.set(Some(0));
+                    }
+                }
+            }
+        }
+    });
+
+    // Save open files whenever they change
+    Effect::new(move |_| {
+        let files = open_files.get();
+        save_open_files(&files);
+    });
 
     // Open dialog when trigger increments
     Effect::new(move |_| {

@@ -60,6 +60,7 @@ pub fn AiPanel(
     set_ai_open: WriteSignal<bool>,
     logan_action: ReadSignal<Option<LoganAction>>,
     set_logan_action: WriteSignal<Option<LoganAction>>,
+    open_files: ReadSignal<Vec<crate::app::LogFile>>,
 ) -> impl IntoView {
     let tok = move || if theme.get() == Theme::Dark { &DARK } else { &LIGHT };
 
@@ -83,6 +84,14 @@ pub fn AiPanel(
     
     // Context chips stored separately from input text
     let (context_chips, set_context_chips) = signal(Vec::<(String, usize, String)>::new()); // (file, line, text)
+    
+    // @ mentioned files stored separately
+    let (mentioned_files, set_mentioned_files) = signal(Vec::<String>::new()); // file names
+    
+    // @ mention autocomplete state
+    let (mention_suggestions, set_mention_suggestions) = signal(Vec::<String>::new());
+    let (mention_active, set_mention_active) = signal(false);
+    let (mention_selected, set_mention_selected) = signal(0usize);
 
     // Greet on first open if already configured
     if init_ready {
@@ -96,34 +105,52 @@ pub fn AiPanel(
     let send_message = move || {
         let msg = input.get().trim().to_string();
         let chips = context_chips.get();
+        let mentions = mentioned_files.get();
         
         // Build full message with context chips for LLM
-        let full_msg_for_llm = if chips.is_empty() {
-            msg.clone()
-        } else {
-            let mut parts = Vec::new();
-            for (file, line, text) in &chips {
-                parts.push(format!("[{file}:{line}]\n{text}"));
+        let mut full_msg_parts = Vec::new();
+        
+        // Add context chips
+        for (file, line, text) in &chips {
+            full_msg_parts.push(format!("[{file}:{line}]\n{text}"));
+        }
+        
+        // Add mentioned files
+        for file_name in &mentions {
+            // Find the full file data
+            if let Some(file) = open_files.get().iter().find(|f| {
+                let fname = f.name.rsplit('/').next()
+                    .or_else(|| f.name.rsplit('\\').next())
+                    .unwrap_or(&f.name);
+                fname == file_name
+            }) {
+                let entries_text: Vec<String> = file.entries.iter()
+                    .take(100) // Limit to first 100 lines to avoid token limits
+                    .map(|e| format!("[Line {}] {} {} {}", e.line, e.datetime, e.status, e.message))
+                    .collect();
+                full_msg_parts.push(format!("File: @{}\n{}", file_name, entries_text.join("\n")));
             }
-            if !msg.is_empty() {
-                parts.push(msg.clone());
-            }
-            parts.join("\n\n")
-        };
+        }
+        
+        // Add user message
+        if !msg.is_empty() {
+            full_msg_parts.push(msg.clone());
+        }
+        
+        let full_msg_for_llm = full_msg_parts.join("\n\n");
         
         // Build display message with only tags for UI
-        let display_msg = if chips.is_empty() {
-            msg.clone()
-        } else {
-            let mut parts = Vec::new();
-            for (file, line, _text) in &chips {
-                parts.push(format!("[{file}:{line}]"));
-            }
-            if !msg.is_empty() {
-                parts.push(msg.clone());
-            }
-            parts.join("\n")
-        };
+        let mut display_parts = Vec::new();
+        for (file, line, _text) in &chips {
+            display_parts.push(format!("[{file}:{line}]"));
+        }
+        for file_name in &mentions {
+            display_parts.push(format!("@{}", file_name));
+        }
+        if !msg.is_empty() {
+            display_parts.push(msg.clone());
+        }
+        let display_msg = display_parts.join(" ");
         
         if full_msg_for_llm.is_empty() || loading.get() { return; }
         let key = api_key.get();
@@ -131,6 +158,7 @@ pub fn AiPanel(
 
         set_input.set(String::new());
         set_context_chips.set(Vec::new()); // Clear chips after sending
+        set_mentioned_files.set(Vec::new()); // Clear mentioned files after sending
         set_loading.set(true);
 
         let prov_str = provider.get().to_str();
@@ -231,6 +259,16 @@ pub fn AiPanel(
                 // Ensure chat is visible
                 if !setup_done.get() { set_setup_done.set(true); }
             }
+            LoganAction::AddMultipleContext { items } => {
+                // Add multiple context chips at once
+                set_context_chips.update(|chips| {
+                    for (file, line, text) in items {
+                        chips.push((file, line, text));
+                    }
+                });
+                // Ensure chat is visible
+                if !setup_done.get() { set_setup_done.set(true); }
+            }
             LoganAction::Explain { file, line, text } => {
                 // Build the explain message and auto-send
                 let msg = format!(
@@ -287,9 +325,7 @@ pub fn AiPanel(
                     <div style="width:24px;height:24px;border-radius:7px;\
                         background:linear-gradient(135deg,#7c9dff,#a78bfa);\
                         display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="white">
-                            <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                        </svg>
+                        <img src="/public/LoganIcon.png" width="16" height="16" style="border-radius:3px;opacity:0.7" alt="Logan" />
                     </div>
                     <span style=move || format!("font-size:13px;font-weight:700;color:{}", tok().text_primary)>"Logan"</span>
                     <span style=move || format!(
@@ -639,9 +675,7 @@ pub fn AiPanel(
                                          font-weight:600;",
                                         tok().bg_elevated, tok().accent_border, tok().accent
                                     )>
-                                        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                                            <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                                        </svg>
+                                        <img src="/public/LoganIcon.png" width="10" height="10" style="border-radius:2px;opacity:0.6" alt="Logan" />
                                         <span>{format!("{}:{}", file, line)}</span>
                                         <button
                                             style=move || format!(
@@ -664,11 +698,94 @@ pub fn AiPanel(
                         </div>
                     </Show>
                     
+                    // Mentioned files chips display
+                    <Show when=move || !mentioned_files.get().is_empty()>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                            {move || mentioned_files.get().into_iter().enumerate().map(|(idx, file_name)| {
+                                view! {
+                                    <div style=move || format!(
+                                        "display:flex;align-items:center;gap:6px;padding:4px 10px;\
+                                         background:{};border:1px solid {};border-radius:6px;\
+                                         font-size:11px;color:{};font-family:'Fira Code',monospace;\
+                                         font-weight:600;",
+                                        tok().bg_elevated, tok().border, tok().text_secondary
+                                    )>
+                                        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.5">
+                                            <path d="M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5v2a1 1 0 0 0 1 1h2L9.5 1.5z"/>
+                                        </svg>
+                                        <span>{"@"}{file_name.clone()}</span>
+                                        <button
+                                            style=move || format!(
+                                                "margin-left:4px;width:16px;height:16px;border-radius:3px;\
+                                                 border:none;background:{};color:{};cursor:pointer;\
+                                                 display:flex;align-items:center;justify-content:center;\
+                                                 font-size:10px;line-height:1;",
+                                                tok().bg_input, tok().text_muted
+                                            )
+                                            on:click=move |_| {
+                                                set_mentioned_files.update(|files| {
+                                                    files.remove(idx);
+                                                });
+                                            }
+                                            title="Remove file"
+                                        >"×"</button>
+                                    </div>
+                                }
+                            }).collect_view()}
+                        </div>
+                    </Show>
+                    
                     <div style=move || format!(
                         "display:flex;align-items:flex-end;gap:8px;padding:8px 10px;\
-                         background:{};border:1px solid {};border-radius:10px;",
+                         background:{};border:1px solid {};border-radius:10px;position:relative;",
                         tok().bg_input, tok().border
                     )>
+                        // @ mention autocomplete dropdown
+                        <Show when=move || mention_active.get()>
+                            <div style=move || format!(
+                                "position:absolute;bottom:calc(100% + 4px);left:0;right:0;\
+                                 background:{};border:1px solid {};border-radius:8px;\
+                                 box-shadow:0 4px 12px rgba(0,0,0,0.3);max-height:200px;\
+                                 overflow-y:auto;z-index:100;",
+                                tok().bg_elevated, tok().border
+                            )>
+                                {move || mention_suggestions.get().into_iter().enumerate().map(|(idx, file_name)| {
+                                    let is_selected = mention_selected.get() == idx;
+                                    let fname = file_name.clone();
+                                    view! {
+                                        <div
+                                            style=move || format!(
+                                                "padding:8px 12px;cursor:pointer;font-size:12px;\
+                                                 color:{};background:{};transition:background 0.1s;\
+                                                 display:flex;align-items:center;gap:8px;",
+                                                tok().text_primary,
+                                                if is_selected { tok().accent_bg } else { "transparent" }
+                                            )
+                                            on:click=move |_| {
+                                                // Add to mentioned files instead of inserting into text
+                                                set_mentioned_files.update(|files| {
+                                                    if !files.contains(&fname) {
+                                                        files.push(fname.clone());
+                                                    }
+                                                });
+                                                // Remove the @ and partial text from input
+                                                let current = input.get();
+                                                if let Some(at_pos) = current.rfind('@') {
+                                                    let new_val = current[..at_pos].trim_end().to_string();
+                                                    set_input.set(new_val);
+                                                }
+                                                set_mention_active.set(false);
+                                            }
+                                        >
+                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.5;flex-shrink:0">
+                                                <path d="M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5v2a1 1 0 0 0 1 1h2L9.5 1.5z"/>
+                                            </svg>
+                                            {file_name}
+                                        </div>
+                                    }
+                                }).collect_view()}
+                            </div>
+                        </Show>
                         <textarea
                             style=move || format!(
                                 "flex:1;border:none;background:transparent;font-size:12.5px;\
@@ -676,12 +793,92 @@ pub fn AiPanel(
                                  resize:none;min-height:20px;max-height:120px;line-height:1.5;cursor:text;",
                                 tok().text_primary
                             )
-                            placeholder="Ask Logan about your logs…"
+                            placeholder="Ask about your logs (@ to mention files)"
                             rows="1"
                             prop:value=move || input.get()
-                            on:input=move |ev| set_input.set(event_target_value(&ev))
+                            on:input=move |ev| {
+                                let val = event_target_value(&ev);
+                                set_input.set(val.clone());
+                                
+                                // Check for @ mention
+                                if let Some(at_pos) = val.rfind('@') {
+                                    let after_at = &val[at_pos + 1..];
+                                    // Only show suggestions if @ is at start or after whitespace
+                                    let before_at = if at_pos > 0 { &val[at_pos - 1..at_pos] } else { " " };
+                                    if before_at.chars().all(|c| c.is_whitespace()) && !after_at.contains(char::is_whitespace) {
+                                        // Show file suggestions
+                                        let files = open_files.get();
+                                        let query = after_at.to_lowercase();
+                                        let suggestions: Vec<String> = files.iter()
+                                            .map(|f| {
+                                                // Extract just the filename from path
+                                                f.name.rsplit('/').next()
+                                                    .or_else(|| f.name.rsplit('\\').next())
+                                                    .unwrap_or(&f.name)
+                                                    .to_string()
+                                            })
+                                            .filter(|name| query.is_empty() || name.to_lowercase().contains(&query))
+                                            .collect();
+                                        
+                                        if !suggestions.is_empty() {
+                                            set_mention_suggestions.set(suggestions);
+                                            set_mention_active.set(true);
+                                            set_mention_selected.set(0);
+                                        } else {
+                                            set_mention_active.set(false);
+                                        }
+                                    } else {
+                                        set_mention_active.set(false);
+                                    }
+                                } else {
+                                    set_mention_active.set(false);
+                                }
+                            }
                             on:keydown=move |ev| {
-                                if ev.key() == "Enter" && !ev.shift_key() {
+                                if mention_active.get() {
+                                    let suggestions = mention_suggestions.get();
+                                    let selected = mention_selected.get();
+                                    
+                                    match ev.key().as_str() {
+                                        "ArrowDown" => {
+                                            ev.prevent_default();
+                                            if selected + 1 < suggestions.len() {
+                                                set_mention_selected.set(selected + 1);
+                                            }
+                                        }
+                                        "ArrowUp" => {
+                                            ev.prevent_default();
+                                            if selected > 0 {
+                                                set_mention_selected.set(selected - 1);
+                                            }
+                                        }
+                                        "Enter" | "Tab" => {
+                                            if !suggestions.is_empty() && selected < suggestions.len() {
+                                                ev.prevent_default();
+                                                let file_name = suggestions[selected].clone();
+                                                // Add to mentioned files instead of inserting into text
+                                                set_mentioned_files.update(|files| {
+                                                    if !files.contains(&file_name) {
+                                                        files.push(file_name);
+                                                    }
+                                                });
+                                                // Remove the @ and partial text from input
+                                                let current = input.get();
+                                                if let Some(at_pos) = current.rfind('@') {
+                                                    let new_val = current[..at_pos].trim_end().to_string();
+                                                    set_input.set(new_val);
+                                                }
+                                                set_mention_active.set(false);
+                                            }
+                                        }
+                                        "Escape" => {
+                                            set_mention_active.set(false);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                
+                                if ev.key() == "Enter" && !ev.shift_key() && !mention_active.get() {
                                     ev.prevent_default();
                                     send_message();
                                 }
@@ -689,25 +886,55 @@ pub fn AiPanel(
                         />
                         <button
                             style=move || {
-                                let ready = !input.get().trim().is_empty() && !loading.get();
-                                if ready {
+                                let is_loading = loading.get();
+                                if is_loading {
+                                    // Stop button style
                                     "width:28px;height:28px;border-radius:7px;border:none;\
-                                     background:linear-gradient(135deg,#7c9dff,#a78bfa);\
+                                     background:#f87171;\
                                      display:flex;align-items:center;justify-content:center;\
-                                     cursor:pointer;flex-shrink:0;transition:opacity 0.1s;".to_string()
+                                     cursor:pointer;flex-shrink:0;transition:all 0.15s;".to_string()
                                 } else {
-                                    "width:28px;height:28px;border-radius:7px;border:none;\
-                                     background:rgba(124,157,255,0.15);\
-                                     display:flex;align-items:center;justify-content:center;\
-                                     cursor:not-allowed;flex-shrink:0;opacity:0.4;".to_string()
+                                    let ready = !input.get().trim().is_empty();
+                                    if ready {
+                                        "width:28px;height:28px;border-radius:7px;border:none;\
+                                         background:linear-gradient(135deg,#7c9dff,#a78bfa);\
+                                         display:flex;align-items:center;justify-content:center;\
+                                         cursor:pointer;flex-shrink:0;transition:opacity 0.1s;".to_string()
+                                    } else {
+                                        "width:28px;height:28px;border-radius:7px;border:none;\
+                                         background:rgba(124,157,255,0.15);\
+                                         display:flex;align-items:center;justify-content:center;\
+                                         cursor:not-allowed;flex-shrink:0;opacity:0.4;".to_string()
+                                    }
                                 }
                             }
-                            on:click=move |_| send_message()
-                            title="Send (Enter)"
+                            on:click=move |_| {
+                                if loading.get() {
+                                    // Stop generation
+                                    set_loading.set(false);
+                                } else {
+                                    send_message();
+                                }
+                            }
+                            title=move || if loading.get() { "Stop generation" } else { "Send (Enter)" }
                         >
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="white">
-                                <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-15Zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471-.47 1.178Z"/>
-                            </svg>
+                            {move || {
+                                if loading.get() {
+                                    // Stop icon
+                                    view! {
+                                        <svg width="10" height="10" viewBox="0 0 16 16" fill="white">
+                                            <rect width="16" height="16" rx="2"/>
+                                        </svg>
+                                    }.into_any()
+                                } else {
+                                    // Send icon
+                                    view! {
+                                        <svg width="12" height="12" viewBox="0 0 16 16" fill="white">
+                                            <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-15Zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471-.47 1.178Z"/>
+                                        </svg>
+                                    }.into_any()
+                                }
+                            }}
                         </button>
                     </div>
                     <div style=move || format!(

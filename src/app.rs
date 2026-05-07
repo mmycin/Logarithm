@@ -23,6 +23,8 @@ pub struct LogFile {
 pub enum LoganAction {
     /// Add a line as context chip — does NOT auto-send.
     AddContext { file: String, line: usize, text: String },
+    /// Add multiple lines as context chips — does NOT auto-send.
+    AddMultipleContext { items: Vec<(String, usize, String)> }, // (file, line, text)
     /// Add a line and immediately send an "Explain" request.
     Explain    { file: String, line: usize, text: String },
 }
@@ -193,7 +195,7 @@ pub fn App() -> impl IntoView {
         )>
             <TitleBar theme set_theme set_open_dialog_trigger
                 set_show_shortcuts set_show_about
-                filter_open set_filter_open />
+                filter_open set_filter_open set_ai_open />
 
             // ── Main body: [FilterPanel?] | [FileArea] | [AiPanel?] ───────
             <div style="flex:1;display:flex;overflow:hidden;min-height:0">
@@ -214,7 +216,7 @@ pub fn App() -> impl IntoView {
                 // Right AI panel — independent, resizable
                 <Show when=move || ai_open.get()>
                     <AiPanel theme ai_width set_ai_width set_ai_open
-                        logan_action set_logan_action />
+                        logan_action set_logan_action open_files />
                 </Show>
             </div>
 
@@ -264,7 +266,7 @@ pub fn App() -> impl IntoView {
                                     ("Ctrl+F", "Focus search"),
                                     ("Ctrl+T", "Toggle theme"),
                                     ("Ctrl+B", "Toggle filter panel"),
-                                    ("Ctrl+Shift+A", "Toggle AI chat"),
+                                    ("Ctrl+L", "Toggle AI chat"),
                                 ]),
                                 ("Help", vec![
                                     ("Ctrl+/", "Keyboard shortcuts"),
@@ -325,7 +327,7 @@ pub fn App() -> impl IntoView {
                                 background:linear-gradient(135deg,#7c9dff,#a78bfa);\
                                 display:flex;align-items:center;justify-content:center;\
                                 box-shadow:0 10px 30px rgba(124,157,255,0.4)">
-                                <span style="color:white;font-weight:800;font-size:26px">"L"</span>
+                                <img src="/public/StoreLogo.png" width="40" height="40" style="border-radius:8px" alt="Logarithm" />
                             </div>
                             <div style="text-align:center">
                                 <div style="font-size:22px;font-weight:700;color:#e8eaf0;margin-bottom:3px">

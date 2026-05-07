@@ -29,6 +29,7 @@ pub fn TitleBar(
     set_show_about: WriteSignal<bool>,
     filter_open: ReadSignal<bool>,
     set_filter_open: WriteSignal<bool>,
+    set_ai_open: WriteSignal<bool>,
 ) -> impl IntoView {
     let (active_menu, set_active_menu) = signal(None::<&'static str>);
     let toggle_menu = move |menu: &'static str| {
@@ -48,6 +49,7 @@ pub fn TitleBar(
                 "/" => { ev.prevent_default(); set_show_shortcuts.set(true); }
                 "t" | "T" => { ev.prevent_default(); set_theme.update(|t| *t = if *t == Theme::Dark { Theme::Light } else { Theme::Dark }); }
                 "b" | "B" => { ev.prevent_default(); set_filter_open.update(|v| *v = !*v); }
+                "l" | "L" => { ev.prevent_default(); set_ai_open.update(|v| *v = !*v); }
                 _ => {}
             }
         }
@@ -269,9 +271,6 @@ pub fn TitleBar(
                 >
                     // Sparkle + text
                     <span style="display:flex;align-items:center;gap:4px">
-                        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                        </svg>
                         "AI"
                     </span>
                 </button>
@@ -285,9 +284,7 @@ pub fn TitleBar(
                             <div style="width:20px;height:20px;border-radius:6px;\
                                 background:linear-gradient(135deg,#7c9dff,#a78bfa);\
                                 display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                                <svg width="11" height="11" viewBox="0 0 16 16" fill="white">
-                                    <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                                </svg>
+                                <img src="/public/LoganIcon.png" width="11" height="11" style="border-radius:2px;opacity:0.7" alt="Logan" />
                             </div>
                             <div>
                                 <div style=move || format!("font-size:12px;font-weight:700;color:{}", tok().text_primary)>"Logan AI"</div>
@@ -299,7 +296,7 @@ pub fn TitleBar(
                                 // Trigger AI panel open via bottom bar — we just close menu
                                 // The actual toggle is in BottomBar; here we signal via a custom event
                                 if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-                                    let _ = doc.query_selector("[title='Toggle AI Assistant (Ctrl+Shift+A)']")
+                                    let _ = doc.query_selector("[title='Toggle AI Assistant (Ctrl+L)']")
                                         .ok().flatten()
                                         .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
                                         .map(|el| el.click());
@@ -307,9 +304,7 @@ pub fn TitleBar(
                                 set_active_menu.set(None);
                             }
                         >
-                            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.5;flex-shrink:0">
-                                <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                            </svg>
+                            <img src="/public/LoganIcon.png" width="13" height="13" style="border-radius:2px;opacity:0.5" alt="Logan" />
                             "Open Logan Chat"
                             <span style=move || kbd()>"Ctrl+Shift+A"</span>
                         </button>

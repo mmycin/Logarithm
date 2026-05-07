@@ -148,7 +148,7 @@ fn WelcomePage(theme: ReadSignal<Theme>) -> impl IntoView {
                     background:linear-gradient(135deg,#7c9dff,#a78bfa);\
                     display:flex;align-items:center;justify-content:center;\
                     box-shadow:0 8px 24px rgba(124,157,255,0.25);flex-shrink:0">
-                    <span style="color:white;font-weight:800;font-size:22px">"L"</span>
+                    <img src="/public/StoreLogo.png" width="32" height="32" style="border-radius:6px;opacity:0.9" alt="Logarithm" />
                 </div>
                 <div>
                     <h1 style=move || format!(
@@ -384,6 +384,7 @@ pub fn FileViewer(
                                         let (lc, lb, lborder, accent) = level_colors(&level, dark());
                                         let show_badge = !level.is_empty() && !de.is_continuation;
                                         let is_focused = move || focused_line.get() == Some(de.group_line);
+                                        let is_selected = move || selected_lines.get().contains(&de.group_line);
                                         
                                         // Enhanced styling with box and colors
                                         let row_bg = if !de.is_continuation && accent != "transparent" {
@@ -428,16 +429,32 @@ pub fn FileViewer(
                                                         row_bl,
                                                         row_bg
                                                     );
-                                                    if is_focused() {
+                                                    if is_selected() {
                                                         format!("{}background:{};box-shadow:inset 0 0 0 2px {};",
                                                             base, tok().accent_bg, tok().accent_border)
+                                                    } else if is_focused() {
+                                                        format!("{}background:{};box-shadow:inset 0 0 0 1px {};",
+                                                            base, tok().bg_elevated, tok().border)
                                                     } else {
                                                         base
                                                     }
                                                 }
                                                 class="log-row"
-                                                on:click=move |_| {
-                                                    set_focused_line.set(Some(entry_line));
+                                                on:click=move |ev| {
+                                                    if ev.ctrl_key() {
+                                                        // Ctrl+Click: toggle selection
+                                                        set_selected_lines.update(|lines| {
+                                                            if let Some(pos) = lines.iter().position(|&l| l == entry_line) {
+                                                                lines.remove(pos);
+                                                            } else {
+                                                                lines.push(entry_line);
+                                                            }
+                                                        });
+                                                    } else {
+                                                        // Normal click: focus and clear selection
+                                                        set_focused_line.set(Some(entry_line));
+                                                        set_selected_lines.set(Vec::new());
+                                                    }
                                                 }
                                                 on:contextmenu=move |ev| {
                                                     ev.prevent_default();
@@ -528,18 +545,34 @@ pub fn FileViewer(
                     on:click=|ev| ev.stop_propagation()
                 >
                     // Context chip header
-                    {move || ctx_entry.get().map(|(fname, lnum, _)| view! {
-                        <div style=move || format!(
-                            "padding:6px 12px 5px;font-size:10px;font-weight:700;\
-                             color:{};letter-spacing:0.07em;text-transform:uppercase;\
-                             border-bottom:1px solid {};margin-bottom:2px;",
-                            tok().text_muted, tok().border
-                        )>
-                            {format!("{}:{}", fname, lnum)}
-                        </div>
-                    })}
+                    {move || {
+                        let sel_count = selected_lines.get().len();
+                        if sel_count > 0 {
+                            view! {
+                                <div style=move || format!(
+                                    "padding:6px 12px 5px;font-size:10px;font-weight:700;\
+                                     color:{};letter-spacing:0.07em;text-transform:uppercase;\
+                                     border-bottom:1px solid {};margin-bottom:2px;",
+                                    tok().text_muted, tok().border
+                                )>
+                                    {format!("{} lines selected", sel_count)}
+                                </div>
+                            }.into_any()
+                        } else {
+                            ctx_entry.get().map(|(fname, lnum, _)| view! {
+                                <div style=move || format!(
+                                    "padding:6px 12px 5px;font-size:10px;font-weight:700;\
+                                     color:{};letter-spacing:0.07em;text-transform:uppercase;\
+                                     border-bottom:1px solid {};margin-bottom:2px;",
+                                    tok().text_muted, tok().border
+                                )>
+                                    {format!("{}:{}", fname, lnum)}
+                                </div>
+                            }).into_any()
+                        }
+                    }}
 
-                    // Add to Logan context
+                    // Copy line(s)
                     <button
                         style=move || format!(
                             "display:flex;align-items:center;gap:9px;width:100%;text-align:left;\
@@ -548,7 +581,85 @@ pub fn FileViewer(
                             tok().text_primary
                         )
                         on:click=move |_| {
-                            if let Some((fname, lnum, msg)) = ctx_entry.get() {
+                            let sel = selected_lines.get();
+                            let text_to_copy = if !sel.is_empty() {
+                                // Copy all selected lines
+                                let entries = display_entries();
+                                let mut lines_text = Vec::new();
+                                for line_num in sel {
+                                    if let Some(de) = entries.iter().find(|e| e.group_line == line_num) {
+                                        lines_text.push(format!("[Line {}] {}", line_num, de.entry.message));
+                                    }
+                                }
+                                lines_text.join("\n")
+                            } else if let Some((_, lnum, msg)) = ctx_entry.get() {
+                                // Copy single line
+                                format!("[Line {}] {}", lnum, msg)
+                            } else {
+                                String::new()
+                            };
+                            
+                            if !text_to_copy.is_empty() {
+                                let js_code = format!(
+                                    "navigator.clipboard.writeText(`{}`)",
+                                    text_to_copy.replace('`', "\\`").replace('\\', "\\\\")
+                                );
+                                let _ = js_sys::eval(&js_code);
+                            }
+                            set_ctx_visible.set(false);
+                        }
+                    >
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.55;flex-shrink:0">
+                            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                        </svg>
+                        {move || {
+                            let sel_count = selected_lines.get().len();
+                            if sel_count > 0 {
+                                format!("Copy {} lines", sel_count)
+                            } else {
+                                "Copy line".to_string()
+                            }
+                        }}
+                    </button>
+
+                    // Add to Logan context (single or multiple)
+                    <button
+                        style=move || format!(
+                            "display:flex;align-items:center;gap:9px;width:100%;text-align:left;\
+                             padding:7px 12px;font-size:12.5px;color:{};background:transparent;\
+                             border:none;cursor:pointer;transition:background 0.08s;",
+                            tok().text_primary
+                        )
+                        on:click=move |_| {
+                            let sel = selected_lines.get();
+                            if !sel.is_empty() {
+                                // Add all selected lines to context at once
+                                let entries = display_entries();
+                                let file_name = selected_file()
+                                    .map(|f| {
+                                        let n = &f.name;
+                                        n.rsplit('/').next()
+                                         .or_else(|| n.rsplit('\\').next())
+                                         .unwrap_or(n)
+                                         .to_string()
+                                    })
+                                    .unwrap_or_default();
+                                
+                                let mut items = Vec::new();
+                                for line_num in sel {
+                                    if let Some(de) = entries.iter().find(|e| e.group_line == line_num) {
+                                        items.push((file_name.clone(), line_num, de.entry.message.clone()));
+                                    }
+                                }
+                                
+                                if !items.is_empty() {
+                                    set_logan_action.set(Some(LoganAction::AddMultipleContext { items }));
+                                }
+                                
+                                set_selected_lines.set(Vec::new());
+                                set_ai_open.set(true);
+                            } else if let Some((fname, lnum, msg)) = ctx_entry.get() {
                                 set_logan_action.set(Some(LoganAction::AddContext {
                                     file: fname, line: lnum, text: msg,
                                 }));
@@ -557,9 +668,7 @@ pub fn FileViewer(
                             set_ctx_visible.set(false);
                         }
                     >
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.55;flex-shrink:0">
-                            <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                        </svg>
+                        <img src="/public/LoganIcon.png" width="13" height="13" style="border-radius:2px;opacity:0.6" alt="Logan" />
                         "Add to Logan context"
                     </button>
 

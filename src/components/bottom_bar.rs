@@ -28,12 +28,12 @@ pub fn BottomBar(
                         if on {
                             format!("display:flex;align-items:center;gap:4px;height:16px;padding:0 7px;\
                                      border-radius:3px;border:1px solid {};background:{};\
-                                     color:{};font-size:10.5px;font-weight:600;cursor:default;",
+                                     color:{};font-size:10.5px;font-weight:600;cursor:pointer;",
                                 t.accent_border, t.accent_bg, t.accent)
                         } else {
                             format!("display:flex;align-items:center;gap:4px;height:16px;padding:0 7px;\
                                      border-radius:3px;border:1px solid transparent;background:transparent;\
-                                     color:{};font-size:10.5px;font-weight:500;cursor:default;",
+                                     color:{};font-size:10.5px;font-weight:500;cursor:pointer;",
                                 t.text_muted)
                         }
                     }
@@ -65,21 +65,18 @@ pub fn BottomBar(
                     if open {
                         format!("display:flex;align-items:center;gap:5px;height:16px;padding:0 8px;\
                                  border-radius:3px;border:1px solid {};background:{};\
-                                 color:{};font-size:10.5px;font-weight:600;cursor:default;",
+                                 color:{};font-size:10.5px;font-weight:600;cursor:pointer;",
                             t.accent_border, t.accent_bg, t.accent)
                     } else {
                         format!("display:flex;align-items:center;gap:5px;height:16px;padding:0 8px;\
                                  border-radius:3px;border:1px solid transparent;background:transparent;\
-                                 color:{};font-size:10.5px;font-weight:500;cursor:default;",
+                                 color:{};font-size:10.5px;font-weight:500;cursor:pointer;",
                             t.text_muted)
                     }
                 }
                 on:click=move |_| set_ai_open.update(|v| *v = !*v)
-                title="Toggle AI Assistant (Ctrl+Shift+A)"
+                title="Toggle AI Assistant (Ctrl+L)"
             >
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                </svg>
                 "AI Chat"
             </button>
         </div>

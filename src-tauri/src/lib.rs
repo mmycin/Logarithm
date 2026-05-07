@@ -124,6 +124,13 @@ mod commands {
             .map_err(|e| e.to_string())
     }
 
+    /// Read a file by path and return its contents.
+    #[tauri::command]
+    pub async fn read_file_by_path(path: String) -> Result<String, String> {
+        std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read file {}: {}", path, e))
+    }
+
     /// Send a chat message to Gemini or OpenAI and return the assistant reply.
     #[tauri::command]
     pub async fn ai_chat(req: AiChatRequest) -> Result<String, String> {
@@ -263,11 +270,13 @@ mod commands {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::parse_log,
             commands::filter_entries,
             commands::open_url,
             commands::ai_chat,
+            commands::read_file_by_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
