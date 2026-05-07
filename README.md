@@ -2,6 +2,8 @@
 
 <div align="center">
 
+![Logarithm Banner](public/banner.jpg)
+
 **A modern, blazing-fast log file viewer built with Tauri and Leptos**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
