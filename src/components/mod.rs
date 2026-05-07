@@ -5,6 +5,7 @@ pub mod file_viewer;
 pub mod filter_panel;
 pub mod filter_section;
 pub mod filter_tab;
+pub mod markdown;
 pub mod severity;
 pub mod title_bar;
 

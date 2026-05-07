@@ -277,6 +277,12 @@ pub fn FileViewer(
     let (ctx_x, set_ctx_x)             = signal(0i32);
     let (ctx_y, set_ctx_y)             = signal(0i32);
     let (ctx_entry, set_ctx_entry)     = signal(None::<(String, usize, String)>); // (filename, line, message)
+    
+    // Focused line state
+    let (focused_line, set_focused_line) = signal(None::<usize>);
+    
+    // Multi-select state
+    let (selected_lines, set_selected_lines) = signal(Vec::<usize>::new());
 
     let selected_file = move || -> Option<LogFile> {
         active_file.get().and_then(|idx| open_files.get().get(idx).cloned())
@@ -377,13 +383,23 @@ pub fn FileViewer(
                                         let level = de.entry.status.clone();
                                         let (lc, lb, lborder, accent) = level_colors(&level, dark());
                                         let show_badge = !level.is_empty() && !de.is_continuation;
-                                        let row_bl = if accent != "transparent" && !de.is_continuation {
-                                            format!("border-left:2px solid {}55;", accent)
-                                        } else if de.is_continuation {
-                                            format!("border-left:2px solid {}22;", accent)
+                                        let is_focused = move || focused_line.get() == Some(de.group_line);
+                                        
+                                        // Enhanced styling with box and colors
+                                        let row_bg = if !de.is_continuation && accent != "transparent" {
+                                            format!("background:linear-gradient(90deg, {}08 0%, transparent 100%);", accent)
                                         } else {
-                                            "border-left:2px solid transparent;".to_string()
+                                            String::new()
                                         };
+                                        
+                                        let row_bl = if accent != "transparent" && !de.is_continuation {
+                                            format!("border-left:3px solid {};", accent)
+                                        } else if de.is_continuation {
+                                            format!("border-left:3px solid {}22;", accent)
+                                        } else {
+                                            "border-left:3px solid transparent;".to_string()
+                                        };
+                                        
                                         let msg_opacity = if de.is_continuation { "opacity:0.65;" } else { "" };
 
                                         // For context menu
@@ -402,13 +418,27 @@ pub fn FileViewer(
 
                                         view! {
                                             <div
-                                                style=move || format!(
-                                                    "display:flex;align-items:baseline;padding:{}12px;\
-                                                     border-bottom:1px solid {};{}cursor:default;",
-                                                    if de.is_continuation { "1px " } else { "2px " },
-                                                    tok().border_subtle,
-                                                    row_bl
-                                                )
+                                                style=move || {
+                                                    let base = format!(
+                                                        "display:flex;align-items:baseline;padding:{}12px;\
+                                                         border-bottom:1px solid {};{}{}cursor:pointer;\
+                                                         transition:all 0.15s ease;",
+                                                        if de.is_continuation { "1px " } else { "2px " },
+                                                        tok().border_subtle,
+                                                        row_bl,
+                                                        row_bg
+                                                    );
+                                                    if is_focused() {
+                                                        format!("{}background:{};box-shadow:inset 0 0 0 2px {};",
+                                                            base, tok().accent_bg, tok().accent_border)
+                                                    } else {
+                                                        base
+                                                    }
+                                                }
+                                                class="log-row"
+                                                on:click=move |_| {
+                                                    set_focused_line.set(Some(entry_line));
+                                                }
                                                 on:contextmenu=move |ev| {
                                                     ev.prevent_default();
                                                     ev.stop_propagation();

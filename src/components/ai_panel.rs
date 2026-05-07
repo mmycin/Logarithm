@@ -80,6 +80,9 @@ pub fn AiPanel(
     let (dragging, set_dragging)     = signal(false);
     let (drag_start_x, set_dsx)      = signal(0i32);
     let (drag_start_w, set_dsw)      = signal(0u32);
+    
+    // Context chips stored separately from input text
+    let (context_chips, set_context_chips) = signal(Vec::<(String, usize, String)>::new()); // (file, line, text)
 
     // Greet on first open if already configured
     if init_ready {
@@ -92,11 +95,42 @@ pub fn AiPanel(
     // ── send_message ─────────────────────────────────────────────────────
     let send_message = move || {
         let msg = input.get().trim().to_string();
-        if msg.is_empty() || loading.get() { return; }
+        let chips = context_chips.get();
+        
+        // Build full message with context chips for LLM
+        let full_msg_for_llm = if chips.is_empty() {
+            msg.clone()
+        } else {
+            let mut parts = Vec::new();
+            for (file, line, text) in &chips {
+                parts.push(format!("[{file}:{line}]\n{text}"));
+            }
+            if !msg.is_empty() {
+                parts.push(msg.clone());
+            }
+            parts.join("\n\n")
+        };
+        
+        // Build display message with only tags for UI
+        let display_msg = if chips.is_empty() {
+            msg.clone()
+        } else {
+            let mut parts = Vec::new();
+            for (file, line, _text) in &chips {
+                parts.push(format!("[{file}:{line}]"));
+            }
+            if !msg.is_empty() {
+                parts.push(msg.clone());
+            }
+            parts.join("\n")
+        };
+        
+        if full_msg_for_llm.is_empty() || loading.get() { return; }
         let key = api_key.get();
         if key.is_empty() { return; }
 
         set_input.set(String::new());
+        set_context_chips.set(Vec::new()); // Clear chips after sending
         set_loading.set(true);
 
         let prov_str = provider.get().to_str();
@@ -113,8 +147,8 @@ pub fn AiPanel(
             .map(|m| (m.role.clone(), m.content.clone()))
             .collect();
 
-        // Push user message to UI
-        set_messages.update(|m| m.push(ChatMessage { role: "user".into(), content: msg.clone() }));
+        // Push user message to UI (show only tags, not full content)
+        set_messages.update(|m| m.push(ChatMessage { role: "user".into(), content: display_msg.clone() }));
 
         spawn_local(async move {
             // Build the request object
@@ -129,9 +163,8 @@ pub fn AiPanel(
             let sys = js_sys::Object::new();
             let _ = Reflect::set(&sys, &JsValue::from_str("role"),    &JsValue::from_str("system"));
             let _ = Reflect::set(&sys, &JsValue::from_str("content"), &JsValue::from_str(
-                "You are Logan, an expert AI assistant specialised in analysing log files. \
-                 Help the user understand their logs, find errors, detect patterns, and diagnose issues. \
-                 Be concise and technical. Format code/log snippets in markdown code blocks."
+                "You are Logan, an expert log analysis assistant. Be concise and precise. \
+                 Answer directly without unnecessary explanations. Use markdown for code/logs."
             ));
             msgs_arr.push(&sys);
 
@@ -146,7 +179,7 @@ pub fn AiPanel(
             // New user message
             let um = js_sys::Object::new();
             let _ = Reflect::set(&um, &JsValue::from_str("role"),    &JsValue::from_str("user"));
-            let _ = Reflect::set(&um, &JsValue::from_str("content"), &JsValue::from_str(&msg));
+            let _ = Reflect::set(&um, &JsValue::from_str("content"), &JsValue::from_str(&full_msg_for_llm));
             msgs_arr.push(&um);
 
             let _ = Reflect::set(&req, &JsValue::from_str("messages"), &msgs_arr);
@@ -191,15 +224,9 @@ pub fn AiPanel(
 
         match action {
             LoganAction::AddContext { file, line, text } => {
-                // Add a context chip to the input box (don't send)
-                let chip = format!("[{file}:{line}]\n{text}");
-                set_input.update(|inp| {
-                    if inp.is_empty() {
-                        *inp = chip;
-                    } else {
-                        inp.push('\n');
-                        inp.push_str(&chip);
-                    }
+                // Add a context chip (stored separately, not in input text)
+                set_context_chips.update(|chips| {
+                    chips.push((file, line, text));
                 });
                 // Ensure chat is visible
                 if !setup_done.get() { set_setup_done.set(true); }
@@ -210,6 +237,7 @@ pub fn AiPanel(
                     "Explain this log line from {file}:{line}\n\n```\n{text}\n```"
                 );
                 set_input.set(msg);
+                set_context_chips.set(Vec::new()); // Clear any existing chips
                 // Ensure chat is visible then send
                 if !setup_done.get() { set_setup_done.set(true); }
                 // Trigger send on next tick via a small trick: set input then call send
@@ -458,31 +486,115 @@ pub fn AiPanel(
             // ── Chat messages ─────────────────────────────────────────────
             <Show when=move || setup_done.get()>
                 <div style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;">
-                    {move || messages.get().into_iter().map(|msg| {
+                    {move || messages.get().into_iter().enumerate().map(|(idx, msg)| {
                         let is_user  = msg.role == "user";
                         let is_error = msg.role == "error";
+                        let content_for_copy = msg.content.clone();
+                        let content_for_html = msg.content.clone();
+                        
                         view! {
-                            <div style=if is_user { "display:flex;justify-content:flex-end;" }
-                                       else       { "display:flex;justify-content:flex-start;" }>
+                            <div style=if is_user { "display:flex;flex-direction:column;align-items:flex-end;gap:4px;" }
+                                       else       { "display:flex;flex-direction:column;align-items:flex-start;gap:4px;" }>
                                 <div style=move || {
                                     let t = tok();
                                     if is_error {
                                         "max-width:92%;padding:9px 12px;border-radius:10px;\
-                                         font-size:12px;line-height:1.55;white-space:pre-wrap;\
+                                         font-size:12px;line-height:1.55;\
                                          background:#f8717118;color:#fca5a5;border:1px solid #f8717130;".to_string()
                                     } else if is_user {
                                         format!("max-width:80%;padding:9px 12px;border-radius:10px 10px 3px 10px;\
-                                                 font-size:12px;line-height:1.55;white-space:pre-wrap;\
+                                                 font-size:12px;line-height:1.55;\
                                                  background:linear-gradient(135deg,{},#a78bfa);color:white;",
                                             t.accent)
                                     } else {
                                         format!("max-width:92%;padding:9px 12px;border-radius:10px 10px 10px 3px;\
-                                                 font-size:12px;line-height:1.55;white-space:pre-wrap;\
+                                                 font-size:12px;line-height:1.55;\
                                                  background:{};border:1px solid {};color:{};",
                                             t.bg_elevated, t.border, t.text_primary)
                                     }
+                                } inner_html=move || {
+                                    use crate::components::markdown::md_to_html;
+                                    let is_dark = theme.get() == Theme::Dark;
+                                    if is_user || is_error {
+                                        // For user and error messages, use pre-wrap style
+                                        format!("<div style='white-space:pre-wrap'>{}</div>", 
+                                            content_for_html.replace('&', "&amp;")
+                                                   .replace('<', "&lt;")
+                                                   .replace('>', "&gt;"))
+                                    } else {
+                                        // For assistant messages, render markdown
+                                        md_to_html(&content_for_html, is_dark)
+                                    }
                                 }>
-                                    {msg.content.clone()}
+                                </div>
+                                
+                                // Action buttons (copy + retry for assistant)
+                                <div style="display:flex;gap:4px;align-items:center;">
+                                    // Copy button (for all messages)
+                                    <button
+                                        style=move || format!(
+                                            "padding:3px 7px;border-radius:4px;border:1px solid {};\
+                                             background:{};color:{};font-size:10px;cursor:pointer;\
+                                             display:flex;align-items:center;gap:4px;opacity:0.7;\
+                                             transition:opacity 0.15s;",
+                                            tok().border, tok().bg_input, tok().text_muted
+                                        )
+                                        on:click=move |_| {
+                                            let content_to_copy = content_for_copy.clone();
+                                            // Use JS eval to copy to clipboard
+                                            let js_code = format!(
+                                                "navigator.clipboard.writeText(`{}`)",
+                                                content_to_copy.replace('`', "\\`").replace('\\', "\\\\")
+                                            );
+                                            let _ = js_sys::eval(&js_code);
+                                        }
+                                        title="Copy message"
+                                    >
+                                        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                                            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                                            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                        </svg>
+                                        "Copy"
+                                    </button>
+                                    
+                                    // Retry button (only for assistant messages)
+                                    {if !is_user && !is_error {
+                                        view! {
+                                            <button
+                                                style=move || format!(
+                                                    "padding:3px 7px;border-radius:4px;border:1px solid {};\
+                                                     background:{};color:{};font-size:10px;cursor:pointer;\
+                                                     display:flex;align-items:center;gap:4px;opacity:0.7;\
+                                                     transition:opacity 0.15s;",
+                                                    tok().border, tok().bg_input, tok().text_muted
+                                                )
+                                                on:click=move |_| {
+                                                    // Find the user message before this assistant message
+                                                    let msgs = messages.get();
+                                                    if idx > 0 {
+                                                        if let Some(prev_msg) = msgs.get(idx - 1) {
+                                                            if prev_msg.role == "user" {
+                                                                // Remove messages from this point onwards
+                                                                set_messages.update(|m| m.truncate(idx - 1));
+                                                                // Set the input to the previous user message and resend
+                                                                set_input.set(prev_msg.content.clone());
+                                                                send_message();
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                title="Retry this request"
+                                            >
+                                                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                                                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                                                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                                                </svg>
+                                                "Retry"
+                                            </button>
+                                        }.into_any()
+                                    } else {
+                                        view! { <span/> }.into_any()
+                                    }}
                                 </div>
                             </div>
                         }
@@ -515,35 +627,48 @@ pub fn AiPanel(
                 <div style=move || format!(
                     "padding:10px 12px;border-top:1px solid {};flex-shrink:0;position:relative;", tok().border
                 )>
+                    // Context chips display (above input)
+                    <Show when=move || !context_chips.get().is_empty()>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                            {move || context_chips.get().into_iter().enumerate().map(|(idx, (file, line, _text))| {
+                                view! {
+                                    <div style=move || format!(
+                                        "display:flex;align-items:center;gap:6px;padding:4px 10px;\
+                                         background:{};border:1px solid {};border-radius:6px;\
+                                         font-size:11px;color:{};font-family:'Fira Code',monospace;\
+                                         font-weight:600;",
+                                        tok().bg_elevated, tok().accent_border, tok().accent
+                                    )>
+                                        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                                            <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
+                                        </svg>
+                                        <span>{format!("{}:{}", file, line)}</span>
+                                        <button
+                                            style=move || format!(
+                                                "margin-left:4px;width:16px;height:16px;border-radius:3px;\
+                                                 border:none;background:{};color:{};cursor:pointer;\
+                                                 display:flex;align-items:center;justify-content:center;\
+                                                 font-size:10px;line-height:1;",
+                                                tok().bg_input, tok().text_muted
+                                            )
+                                            on:click=move |_| {
+                                                set_context_chips.update(|chips| {
+                                                    chips.remove(idx);
+                                                });
+                                            }
+                                            title="Remove context"
+                                        >"×"</button>
+                                    </div>
+                                }
+                            }).collect_view()}
+                        </div>
+                    </Show>
+                    
                     <div style=move || format!(
                         "display:flex;align-items:flex-end;gap:8px;padding:8px 10px;\
                          background:{};border:1px solid {};border-radius:10px;",
                         tok().bg_input, tok().border
                     )>
-                        // Context chip — shown when input starts with [file:line]
-                        {move || {
-                            let inp = input.get();
-                            if inp.starts_with('[') {
-                                if let Some(end) = inp.find("]\n") {
-                                    let chip = &inp[1..end];
-                                    return view! {
-                                        <div style=move || format!(
-                                            "position:absolute;bottom:calc(100% + 4px);left:12px;\
-                                             display:flex;align-items:center;gap:5px;padding:3px 8px;\
-                                             background:{};border:1px solid {};border-radius:5px;\
-                                             font-size:11px;color:{};font-family:'Fira Code',monospace;",
-                                            tok().bg_elevated, tok().accent_border, tok().accent
-                                        )>
-                                            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                                                <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.829 1.828l1.936.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.829l-.645 1.936a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937z"/>
-                                            </svg>
-                                            {chip.to_string()}
-                                        </div>
-                                    }.into_any();
-                                }
-                            }
-                            view! { <span/> }.into_any()
-                        }}
                         <textarea
                             style=move || format!(
                                 "flex:1;border:none;background:transparent;font-size:12.5px;\
