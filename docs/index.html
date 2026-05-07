@@ -1,762 +1,296 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Logarithm - A blazing-fast, AI-powered log file viewer. Modern interface, advanced filtering, and intelligent analysis.">
-    <title>Logarithm - AI-Powered Log Viewer</title>
+    <meta name="description" content="Logarithm - The fastest, most intelligent AI-powered log viewer. Analyze logs instantly with advanced filtering, real-time search, and AI assistance.">
+    <meta name="keywords" content="log viewer, log analyzer, AI log analysis, Tauri, Rust, Leptos, developer tools, debugging">
+    <meta name="author" content="mmycin">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Logarithm - AI-Powered Log Viewer">
+    <meta property="og:description" content="The fastest, most intelligent log viewer ever built. Analyze logs with AI, filter instantly, and debug faster.">
+    <meta property="og:image" content="./banner.jpg">
+    <meta property="og:url" content="https://mmycin.github.io/Logarithm/">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Logarithm - AI-Powered Log Viewer">
+    <meta name="twitter:description" content="The fastest, most intelligent log viewer ever built.">
+    <meta name="twitter:image" content="./banner.jpg">
+    
+    <title>Logarithm - AI-Powered Log Viewer | Analyze Logs Instantly</title>
     <link rel="icon" href="./StoreLogo.png">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        :root {
-            --bg-1: #0a0e27;
-            --bg-2: #151932;
-            --bg-3: #1e2139;
-            --text-1: #ffffff;
-            --text-2: #b4b9d4;
-            --text-3: #8b91b0;
-            --accent: #6366f1;
-            --accent-2: #8b5cf6;
-            --accent-glow: rgba(99, 102, 241, 0.3);
-            --success: #10b981;
-            --warning: #f59e0b;
-        }
-        
-        [data-theme="light"] {
-            --bg-1: #ffffff;
-            --bg-2: #f8fafc;
-            --bg-3: #e2e8f0;
-            --text-1: #0f172a;
-            --text-2: #475569;
-            --text-3: #64748b;
-            --accent-glow: rgba(99, 102, 241, 0.15);
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--bg-1);
-            color: var(--text-1);
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-        
-        /* Animated Background */
-        .bg-animation {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-            opacity: 0.4;
-        }
-        
-        .bg-animation::before,
-        .bg-animation::after {
-            content: '';
-            position: absolute;
-            width: 600px;
-            height: 600px;
-            border-radius: 50%;
-            filter: blur(100px);
-            animation: float 20s ease-in-out infinite;
-        }
-        
-        .bg-animation::before {
-            background: var(--accent);
-            top: -200px;
-            left: -200px;
-            animation-delay: 0s;
-        }
-        
-        .bg-animation::after {
-            background: var(--accent-2);
-            bottom: -200px;
-            right: -200px;
-            animation-delay: 10s;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            33% { transform: translate(100px, -100px) scale(1.1); }
-            66% { transform: translate(-100px, 100px) scale(0.9); }
-        }
-        
-        /* Header */
-        header {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 1000;
-            backdrop-filter: blur(20px);
-            background: rgba(10, 14, 39, 0.8);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        [data-theme="light"] header {
-            background: rgba(255, 255, 255, 0.8);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        }
-        
-        nav {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 1.25rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 1.5rem;
-            font-weight: 700;
-            text-decoration: none;
-            color: var(--text-1);
-        }
-        
-        .logo img {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px var(--accent-glow);
-        }
-        
-        .nav-links {
-            display: flex;
-            gap: 2.5rem;
-            align-items: center;
-            list-style: none;
-        }
-        
-        .nav-links a {
-            color: var(--text-2);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s;
-            position: relative;
-        }
-        
-        .nav-links a::after {
-            content: '';
-            position: absolute;
-            bottom: -4px;
-            left: 0;
-            width: 0;
-            height: 2px;
-            background: var(--accent);
-            transition: width 0.3s;
-        }
-        
-        .nav-links a:hover {
-            color: var(--accent);
-        }
-        
-        .nav-links a:hover::after {
-            width: 100%;
-        }
-        
-        .theme-toggle {
-            background: var(--bg-3);
-            border: none;
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            cursor: pointer;
-            font-size: 1.25rem;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .theme-toggle:hover {
-            transform: scale(1.1) rotate(15deg);
-            box-shadow: 0 4px 12px var(--accent-glow);
-        }
-        
-        /* Hero Section */
-        .hero {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            padding: 8rem 2rem 4rem;
-        }
-        
-        .hero-content {
-            max-width: 1400px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 4rem;
-            align-items: center;
-        }
-        
-        .hero-text h1 {
-            font-size: 4.5rem;
-            font-weight: 900;
-            line-height: 1.1;
-            margin-bottom: 1.5rem;
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: fadeInUp 0.8s ease-out;
-        }
-        
-        .hero-text p {
-            font-size: 1.5rem;
-            color: var(--text-2);
-            margin-bottom: 2.5rem;
-            animation: fadeInUp 0.8s ease-out 0.2s both;
-        }
-        
-        .hero-buttons {
-            display: flex;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-            animation: fadeInUp 0.8s ease-out 0.4s both;
-        }
-        
-        .btn {
-            padding: 1rem 2.5rem;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 1.125rem;
-            text-decoration: none;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.75rem;
-            border: none;
-            cursor: pointer;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
-            color: white;
-            box-shadow: 0 8px 24px var(--accent-glow);
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 32px var(--accent-glow);
-        }
-        
-        .btn-secondary {
-            background: var(--bg-3);
-            color: var(--text-1);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .btn-secondary:hover {
-            background: var(--bg-2);
-            transform: translateY(-4px);
-        }
-        
-        .hero-image {
-            position: relative;
-            animation: fadeInRight 1s ease-out 0.6s both;
-        }
-        
-        .hero-image img {
-            width: 100%;
-            border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-            transform: rotate(-2deg);
-            transition: transform 0.5s;
-        }
-        
-        .hero-image:hover img {
-            transform: rotate(0deg) scale(1.02);
-        }
-        
-        /* Download Section */
-        .download {
-            padding: 6rem 2rem;
-            background: var(--bg-2);
-        }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        .section-title {
-            text-align: center;
-            font-size: 3.5rem;
-            font-weight: 800;
-            margin-bottom: 1rem;
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        
-        .section-subtitle {
-            text-align: center;
-            font-size: 1.25rem;
-            color: var(--text-2);
-            margin-bottom: 4rem;
-        }
-        
-        .download-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 2rem;
-        }
-        
-        .download-card {
-            background: var(--bg-1);
-            padding: 3rem;
-            border-radius: 24px;
-            border: 2px solid rgba(255, 255, 255, 0.05);
-            transition: all 0.4s;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .download-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
-            opacity: 0;
-            transition: opacity 0.4s;
-        }
-        
-        .download-card:hover {
-            transform: translateY(-8px);
-            border-color: var(--accent);
-            box-shadow: 0 20px 60px var(--accent-glow);
-        }
-        
-        .download-card:hover::before {
-            opacity: 0.05;
-        }
-        
-        .download-card-content {
-            position: relative;
-            z-index: 1;
-        }
-        
-        .platform-icon {
-            font-size: 4rem;
-            margin-bottom: 1.5rem;
-            display: block;
-        }
-        
-        .download-card h3 {
-            font-size: 2rem;
-            margin-bottom: 0.75rem;
-        }
-        
-        .download-card p {
-            color: var(--text-3);
-            margin-bottom: 2rem;
-        }
-        
-        .download-links {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .download-link {
-            padding: 1rem 1.5rem;
-            background: var(--bg-3);
-            border-radius: 12px;
-            text-decoration: none;
-            color: var(--text-1);
-            font-weight: 600;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        
-        .download-link:hover {
-            background: var(--accent);
-            transform: translateX(8px);
-        }
-        
-        /* Features Section */
-        .features {
-            padding: 6rem 2rem;
-        }
-        
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin-top: 4rem;
-        }
-        
-        .feature-card {
-            background: var(--bg-2);
-            padding: 2.5rem;
-            border-radius: 20px;
-            border: 2px solid rgba(255, 255, 255, 0.05);
-            transition: all 0.4s;
-        }
-        
-        .feature-card:hover {
-            transform: translateY(-8px);
-            border-color: var(--accent);
-            box-shadow: 0 20px 60px var(--accent-glow);
-        }
-        
-        .feature-icon {
-            font-size: 3rem;
-            margin-bottom: 1.5rem;
-            display: block;
-        }
-        
-        .feature-card h3 {
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .feature-card p {
-            color: var(--text-2);
-            line-height: 1.8;
-        }
-        
-        /* Screenshots */
-        .screenshots {
-            padding: 6rem 2rem;
-            background: var(--bg-2);
-        }
-        
-        .screenshot-showcase {
-            margin-top: 4rem;
-            border-radius: 24px;
-            overflow: hidden;
-            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
-        }
-        
-        .screenshot-showcase img {
-            width: 100%;
-            display: block;
-        }
-        
-        /* Footer */
-        footer {
-            padding: 4rem 2rem;
-            background: var(--bg-1);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-        }
-        
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            gap: 3rem;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-        }
-        
-        .footer-links a {
-            color: var(--text-2);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        
-        .footer-links a:hover {
-            color: var(--accent);
-        }
-        
-        /* Animations */
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(40px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        @keyframes fadeInRight {
-            from {
-                opacity: 0;
-                transform: translateX(40px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-        
-        /* Responsive */
-        @media (max-width: 1024px) {
-            .hero-content {
-                grid-template-columns: 1fr;
-                text-align: center;
-            }
-            
-            .hero-text h1 {
-                font-size: 3.5rem;
-            }
-            
-            .hero-buttons {
-                justify-content: center;
-            }
-            
-            .nav-links {
-                gap: 1.5rem;
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .hero-text h1 {
-                font-size: 2.5rem;
-            }
-            
-            .hero-text p {
-                font-size: 1.25rem;
-            }
-            
-            .section-title {
-                font-size: 2.5rem;
-            }
-            
-            nav {
-                padding: 1rem;
-            }
-            
-            .nav-links {
-                gap: 1rem;
-                font-size: 0.9rem;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="bg-animation"></div>
+    <!-- Animated Background -->
+    <div class="bg-gradient"></div>
+    <div class="bg-canvas">
+        <div class="floating-shape shape-1"></div>
+        <div class="floating-shape shape-2"></div>
+        <div class="floating-shape shape-3"></div>
+    </div>
     
+    <!-- Header -->
     <header>
         <nav>
             <a href="#" class="logo">
-                <img src="./StoreLogo.png" alt="Logarithm">
+                <img src="./StoreLogo.png" alt="Logarithm Logo" class="logo-img">
                 <span>Logarithm</span>
             </a>
             <ul class="nav-links">
-                <li><a href="#download">Download</a></li>
-                <li><a href="#features">Features</a></li>
-                <li><a href="#screenshots">Screenshots</a></li>
-                <li><a href="https://github.com/mmycin/Logarithm" target="_blank">GitHub</a></li>
-                <li><button class="theme-toggle" onclick="toggleTheme()">ðŸŒ™</button></li>
+                <li><a href="#download" class="nav-link">Download</a></li>
+                <li><a href="#features" class="nav-link">Features</a></li>
+                <li><a href="#screenshots" class="nav-link">Screenshots</a></li>
+                <li><a href="https://github.com/mmycin/Logarithm" class="nav-link" target="_blank">GitHub</a></li>
+                <li><button class="theme-toggle" aria-label="Toggle theme"><span class="theme-icon">☀️</span></button></li>
             </ul>
         </nav>
     </header>
     
-    <main>
-        <section class="hero">
-            <div class="hero-content">
-                <div class="hero-text">
-                    <h1>AI-Powered Log Analysis</h1>
-                    <p>The fastest, most intelligent log viewer ever built. Analyze logs with AI, filter instantly, and debug faster.</p>
-                    <div class="hero-buttons">
-                        <a href="#download" class="btn btn-primary">
-                            <span>â¬‡ï¸</span>
-                            Download Now
-                        </a>
-                        <a href="https://github.com/mmycin/Logarithm" class="btn btn-secondary" target="_blank">
-                            <span>â­</span>
-                            Star on GitHub
-                        </a>
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-text">
+                <div class="hero-badge">
+                    <span class="badge-dot"></span>
+                    <span>Open Source • MIT Licensed</span>
+                </div>
+                <h1 class="hero-title">AI-Powered Log Analysis</h1>
+                <p class="hero-subtitle">The fastest, most intelligent log viewer ever built. Analyze logs with AI, filter instantly, and debug faster than ever before.</p>
+                <div class="hero-buttons">
+                    <a href="#download" class="btn btn-primary">
+                        <span>Download Now</span>
+                        <span class="btn-icon">→</span>
+                    </a>
+                    <a href="https://github.com/mmycin/Logarithm" class="btn btn-secondary" target="_blank">
+                        <span>View on GitHub</span>
+                        <span class="btn-icon">↗</span>
+                    </a>
+                </div>
+                <div class="hero-stats">
+                    <div class="stat">
+                        <div class="stat-value" data-target="10000">0</div>
+                        <div class="stat-label">Lines/Second</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" data-target="4">0</div>
+                        <div class="stat-label">AI Providers</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" data-target="100">0</div>
+                        <div class="stat-label">% Open Source</div>
                     </div>
                 </div>
-                <div class="hero-image">
-                    <img id="hero-img" src="./hero.png" alt="Logarithm Interface">
+            </div>
+            <div class="hero-visual">
+                <div class="hero-image-glow"></div>
+                <div class="hero-image-container">
+                    <img id="hero-img" src="./hero.png" alt="Logarithm Interface" class="hero-image">
                 </div>
             </div>
-        </section>
-        
-        <section id="download" class="download">
-            <div class="container">
-                <h2 class="section-title">Get Started</h2>
-                <p class="section-subtitle">Download for your platform and start analyzing logs in seconds</p>
+        </div>
+    </section>
+    
+    <!-- Download Section -->
+    <section id="download" class="download">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-badge">Get Started</span>
+                <h2 class="section-title">Download Logarithm</h2>
+                <p class="section-subtitle">Choose your platform and start analyzing logs in seconds</p>
+            </div>
+            
+            <div class="download-grid">
+                <div class="download-card reveal">
+                    <div class="download-card-content">
+                        <div class="platform-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="9" y1="3" x2="9" y2="21"></line>
+                            </svg>
+                        </div>
+                        <h3>Windows</h3>
+                        <p>Windows 10/11 (x64)</p>
+                        <div class="download-links">
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                <span>Setup Installer (.exe)</span>
+                                <span class="download-arrow">→</span>
+                            </a>
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                <span>MSI Package (.msi)</span>
+                                <span class="download-arrow">→</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
                 
-                <div class="download-grid">
-                    <div class="download-card">
-                        <div class="download-card-content">
-                            <span class="platform-icon">ðŸªŸ</span>
-                            <h3>Windows</h3>
-                            <p>Windows 10/11 (x64)</p>
-                            <div class="download-links">
-                                <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
-                                    <span>Setup Installer (.exe)</span>
-                                    <span>â†’</span>
-                                </a>
-                                <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
-                                    <span>MSI Package (.msi)</span>
-                                    <span>â†’</span>
-                                </a>
-                            </div>
+                <div class="download-card reveal">
+                    <div class="download-card-content">
+                        <div class="platform-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                                <path d="M2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                            </svg>
                         </div>
-                    </div>
-                    
-                    <div class="download-card">
-                        <div class="download-card-content">
-                            <span class="platform-icon">ðŸŽ</span>
-                            <h3>macOS</h3>
-                            <p>macOS 10.15 or later</p>
-                            <div class="download-links">
-                                <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
-                                    <span>Apple Silicon (.dmg)</span>
-                                    <span>â†’</span>
-                                </a>
-                                <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
-                                    <span>Intel (.dmg)</span>
-                                    <span>â†’</span>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="download-card">
-                        <div class="download-card-content">
-                            <span class="platform-icon">ðŸ§</span>
-                            <h3>Linux</h3>
-                            <p>Ubuntu 20.04 or later</p>
-                            <div class="download-links">
-                                <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
-                                    <span>Debian Package (.deb)</span>
-                                    <span>â†’</span>
-                                </a>
-                                <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
-                                    <span>AppImage (Universal)</span>
-                                    <span>â†’</span>
-                                </a>
-                            </div>
+                        <h3>macOS</h3>
+                        <p>macOS 10.15 or later</p>
+                        <div class="download-links">
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                <span>Apple Silicon (.dmg)</span>
+                                <span class="download-arrow">→</span>
+                            </a>
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                <span>Intel (.dmg)</span>
+                                <span class="download-arrow">→</span>
+                            </a>
                         </div>
                     </div>
                 </div>
-            </div>
-        </section>
-        
-        <section id="features" class="features">
-            <div class="container">
-                <h2 class="section-title">Powerful Features</h2>
-                <p class="section-subtitle">Everything you need to analyze logs efficiently</p>
                 
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <span class="feature-icon">ðŸ¤–</span>
-                        <h3>AI Assistant</h3>
-                        <p>Built-in AI (Logan) analyzes logs, explains errors, and suggests fixes. Supports OpenAI, Anthropic, Gemini, and Groq.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <span class="feature-icon">âš¡</span>
-                        <h3>Blazing Fast</h3>
-                        <p>Native Rust performance. Handle 10k+ line files instantly with real-time filtering and search.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <span class="feature-icon">ðŸ”</span>
-                        <h3>Advanced Filtering</h3>
-                        <p>Filter by level, search with regex, date/time ranges, line numbers, and severity. Fuzzy search included.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <span class="feature-icon">ðŸŽ¨</span>
-                        <h3>Beautiful UI</h3>
-                        <p>Modern interface with dark/light themes, syntax highlighting, and smooth animations.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <span class="feature-icon">ðŸ”’</span>
-                        <h3>Privacy First</h3>
-                        <p>All log processing happens locally. Your data never leaves your machine.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <span class="feature-icon">ðŸ“‚</span>
-                        <h3>Multi-File Support</h3>
-                        <p>Open multiple log files simultaneously with tab-based interface and drag-and-drop.</p>
+                <div class="download-card reveal">
+                    <div class="download-card-content">
+                        <div class="platform-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                            </svg>
+                        </div>
+                        <h3>Linux</h3>
+                        <p>Ubuntu 20.04 or later</p>
+                        <div class="download-links">
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                <span>Debian Package (.deb)</span>
+                                <span class="download-arrow">→</span>
+                            </a>
+                            <a href="https://github.com/mmycin/Logarithm/releases/latest" class="download-link">
+                                <span>AppImage (Universal)</span>
+                                <span class="download-arrow">→</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
-        </section>
-        
-        <section id="screenshots" class="screenshots">
-            <div class="container">
+        </div>
+    </section>
+    
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-badge">Features</span>
+                <h2 class="section-title">Powerful Capabilities</h2>
+                <p class="section-subtitle">Everything you need to analyze logs efficiently and effectively</p>
+            </div>
+            
+            <div class="features-grid">
+                <div class="feature-card reveal">
+                    <div class="feature-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
+                    </div>
+                    <h3>AI Assistant</h3>
+                    <p>Built-in AI (Logan) analyzes logs, explains errors, and suggests fixes. Supports OpenAI, Anthropic, Gemini, and Groq.</p>
+                </div>
+                
+                <div class="feature-card reveal">
+                    <div class="feature-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                    </div>
+                    <h3>Blazing Fast</h3>
+                    <p>Native Rust performance. Handle 10k+ line files instantly with real-time filtering and search.</p>
+                </div>
+                
+                <div class="feature-card reveal">
+                    <div class="feature-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                    </div>
+                    <h3>Advanced Filtering</h3>
+                    <p>Filter by level, search with regex, date/time ranges, line numbers, and severity. Fuzzy search included.</p>
+                </div>
+                
+                <div class="feature-card reveal">
+                    <div class="feature-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                    <h3>Beautiful UI</h3>
+                    <p>Modern interface with dark/light themes, syntax highlighting, and smooth animations.</p>
+                </div>
+                
+                <div class="feature-card reveal">
+                    <div class="feature-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                    </div>
+                    <h3>Privacy First</h3>
+                    <p>All log processing happens locally. Your data never leaves your machine.</p>
+                </div>
+                
+                <div class="feature-card reveal">
+                    <div class="feature-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                            <polyline points="13 2 13 9 20 9"></polyline>
+                        </svg>
+                    </div>
+                    <h3>Multi-File Support</h3>
+                    <p>Open multiple log files simultaneously with tab-based interface and drag-and-drop.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Screenshots Section -->
+    <section id="screenshots" class="screenshots">
+        <div class="container">
+            <div class="section-header reveal">
+                <span class="section-badge">Preview</span>
                 <h2 class="section-title">See It In Action</h2>
                 <p class="section-subtitle">Experience the power and beauty of Logarithm</p>
-                
-                <div class="screenshot-showcase">
-                    <img id="main-screenshot" src="./ss_dark.jpg" alt="Logarithm Interface">
-                </div>
             </div>
-        </section>
-    </main>
+            
+            <div class="screenshot-showcase reveal">
+                <img id="main-screenshot" src="./ss_dark.jpg" alt="Logarithm Interface">
+            </div>
+        </div>
+    </section>
     
+    <!-- Footer -->
     <footer>
-        <div class="container">
+        <div class="footer-content">
             <div class="footer-links">
-                <a href="https://github.com/mmycin/Logarithm">GitHub</a>
-                <a href="https://github.com/mmycin/Logarithm/issues">Issues</a>
-                <a href="https://github.com/mmycin/Logarithm/blob/main/README.md">Documentation</a>
-                <a href="https://github.com/mmycin/Logarithm/blob/main/LICENSE">License</a>
+                <a href="https://github.com/mmycin/Logarithm" class="footer-link">GitHub</a>
+                <a href="https://github.com/mmycin/Logarithm/issues" class="footer-link">Issues</a>
+                <a href="https://github.com/mmycin/Logarithm/blob/main/README.md" class="footer-link">Documentation</a>
+                <a href="https://github.com/mmycin/Logarithm/blob/main/LICENSE" class="footer-link">License</a>
             </div>
-            <p style="color: var(--text-3);">&copy; 2024 Logarithm. Built with â¤ï¸ by <a href="https://github.com/mmycin" style="color: var(--accent);">mmycin</a></p>
-            <p style="margin-top: 1rem; color: var(--text-3); font-size: 0.9rem;">
-                Powered by <a href="https://tauri.app" style="color: var(--accent);">Tauri</a>, 
-                <a href="https://leptos.dev" style="color: var(--accent);">Leptos</a>, and 
-                <a href="https://www.rust-lang.org" style="color: var(--accent);">Rust</a>
+            <p class="footer-text">&copy; 2024 Logarithm. Built with ❤️ by <a href="https://github.com/mmycin" class="footer-accent">mmycin</a></p>
+            <p class="footer-text" style="margin-top: 1rem; font-size: 0.9rem;">
+                Powered by <a href="https://tauri.app" class="footer-accent">Tauri</a>, 
+                <a href="https://leptos.dev" class="footer-accent">Leptos</a>, and 
+                <a href="https://www.rust-lang.org" class="footer-accent">Rust</a>
             </p>
         </div>
     </footer>
     
-    <script>
-        function toggleTheme() {
-            const html = document.documentElement;
-            const currentTheme = html.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            
-            const btn = document.querySelector('.theme-toggle');
-            btn.textContent = newTheme === 'dark' ? 'â˜€ï¸' : 'ðŸŒ™';
-            
-            updateImages(newTheme);
-        }
-        
-        function updateImages(theme) {
-            const heroImg = document.getElementById('hero-img');
-            const mainScreenshot = document.getElementById('main-screenshot');
-            
-            if (theme === 'dark') {
-                heroImg.src = './hero.png';
-                mainScreenshot.src = './ss_dark.jpg';
-            } else {
-                heroImg.src = './hero_light.png';
-                mainScreenshot.src = './ss_light.png';
-            }
-        }
-        
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        document.querySelector('.theme-toggle').textContent = savedTheme === 'dark' ? 'â˜€ï¸' : 'ðŸŒ™';
-        updateImages(savedTheme);
-        
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            });
-        });
-    </script>
+    <script src="./script.js"></script>
 </body>
 </html>
