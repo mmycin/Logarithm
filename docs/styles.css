@@ -710,7 +710,7 @@ section {
 
 .showcase-frame img {
   width: 100%;
-  display: block;
+  height: auto; display: block;
 }
 
 /* ── AI SECTION ── */
@@ -762,7 +762,7 @@ section {
 
 .ai-visual img {
   width: 100%;
-  display: block;
+  height: auto; display: block;
 }
 
 /* ── FOOTER ── */
